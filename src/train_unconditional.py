@@ -3,10 +3,12 @@ import os
 
 import torch
 import torch.nn.functional as F
+import numpy as np
+from PIL import Image
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from datasets import load_dataset
+from datasets import load_from_disk, load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
@@ -22,6 +24,7 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 
+from mel import Mel
 
 logger = get_logger(__name__)
 
@@ -77,35 +80,42 @@ def main(args):
     )
 
     if args.dataset_name is not None:
+        dataset = load_from_disk(args.dataset_name, args.dataset_config_name)["train"]
+    else:
         dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
+            "imagefolder",
+            data_dir=args.train_data_dir,
             cache_dir=args.cache_dir,
-            use_auth_token=True if args.use_auth_token else None,
             split="train",
         )
-    else:
-        dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
 
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
         return {"input": images}
 
     dataset.set_transform(transforms)
-    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=args.train_batch_size, shuffle=True
+    )
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps,
-        num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
+        num_training_steps=(len(train_dataloader) * args.num_epochs)
+        // args.gradient_accumulation_steps,
     )
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
 
-    ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
+    ema_model = EMAModel(
+        model,
+        inv_gamma=args.ema_inv_gamma,
+        power=args.ema_power,
+        max_value=args.ema_max_decay,
+    )
 
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
@@ -114,10 +124,14 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
+    mel = Mel(x_res=args.resolution, y_res=args.resolution, hop_length=args.hop_length)
+
     global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
-        progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(
+            total=len(train_dataloader), disable=not accelerator.is_local_main_process
+        )
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
@@ -126,7 +140,10 @@ def main(args):
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, noise_scheduler.num_train_timesteps, (bsz,), device=clean_images.device
+                0,
+                noise_scheduler.num_train_timesteps,
+                (bsz,),
+                device=clean_images.device,
             ).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
@@ -147,7 +164,11 @@ def main(args):
                 optimizer.zero_grad()
 
             progress_bar.update(1)
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+            logs = {
+                "loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+                "step": global_step,
+            }
             if args.use_ema:
                 logs["ema_decay"] = ema_model.decay
             progress_bar.set_postfix(**logs)
@@ -161,24 +182,44 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
+                    unet=accelerator.unwrap_model(
+                        ema_model.averaged_model if args.use_ema else model
+                    ),
                     scheduler=noise_scheduler,
                 )
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy")["sample"]
+                images = pipeline(
+                    generator=generator,
+                    batch_size=args.eval_batch_size,
+                    output_type="numpy",
+                )["sample"]
 
                 # denormalize the images and save to tensorboard
-                images_processed = (images * 255).round().astype("uint8")
-                accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                images_processed = (
+                    (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
                 )
+                accelerator.trackers[0].writer.add_images(
+                    "test_samples", images_processed, epoch
+                )
+                for image in images_processed:
+                    image = Image.fromarray(np.mean(image, axis=0).astype("uint8"))
+                    audio = mel.image_to_audio(image)
+                    accelerator.trackers[0].writer.add_audio(
+                        "test_samples", audio, epoch, sample_rate=mel.get_sample_rate()
+                    )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 if args.push_to_hub:
-                    push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
+                    push_to_hub(
+                        args,
+                        pipeline,
+                        repo,
+                        commit_message=f"Epoch {epoch}",
+                        blocking=False,
+                    )
                 else:
                     pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
@@ -191,7 +232,12 @@ if __name__ == "__main__":
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--dataset_name", type=str, default=None)
     parser.add_argument("--dataset_config_name", type=str, default=None)
-    parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default=None,
+        help="A folder containing the training data.",
+    )
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument("--cache_dir", type=str, default=None)
@@ -230,6 +276,7 @@ if __name__ == "__main__":
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument("--hop_length", type=int, default=512)
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -237,6 +284,8 @@ if __name__ == "__main__":
         args.local_rank = env_local_rank
 
     if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
+        raise ValueError(
+            "You must specify either a dataset name from the hub or a train data directory."
+        )
 
     main(args)
