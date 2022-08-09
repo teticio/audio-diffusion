@@ -80,7 +80,18 @@ def main(args):
     )
 
     if args.dataset_name is not None:
-        dataset = load_from_disk(args.dataset_name, args.dataset_config_name)["train"]
+        if os.path.exists(args.dataset_name):
+            dataset = load_from_disk(args.dataset_name, args.dataset_config_name)[
+                "train"
+            ]
+        else:
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+                use_auth_token=True if args.use_auth_token else None,
+                split="train",
+            )
     else:
         dataset = load_dataset(
             "imagefolder",
@@ -203,11 +214,14 @@ def main(args):
                 accelerator.trackers[0].writer.add_images(
                     "test_samples", images_processed, epoch
                 )
-                for image in images_processed:
+                for _, image in enumerate(images_processed):
                     image = Image.fromarray(np.mean(image, axis=0).astype("uint8"))
                     audio = mel.image_to_audio(image)
                     accelerator.trackers[0].writer.add_audio(
-                        "test_samples", audio, epoch, sample_rate=mel.get_sample_rate()
+                        f"test_audio_{_}",
+                        audio,
+                        epoch,
+                        sample_rate=mel.get_sample_rate(),
                     )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:

@@ -58,6 +58,8 @@ def main(args):
         )
         dsd = DatasetDict({"train": ds})
         dsd.save_to_disk(os.path.join(args.output_dir))
+        if args.push_to_hub:
+            dsd.push_to_hub(args.push_to_hub)
 
 
 if __name__ == "__main__":
@@ -68,5 +70,6 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="data")
     parser.add_argument("--resolution", type=int, default=256)
     parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--push_to_hub", type=str, default=None)
     args = parser.parse_args()
     main(args)

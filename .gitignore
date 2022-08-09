@@ -1,5 +1,5 @@
 .vscode
 __pycache__
 .ipynb_checkpoints
-data
+data*
 ddpm-ema-audio-*
