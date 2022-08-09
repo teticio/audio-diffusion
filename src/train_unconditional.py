@@ -253,7 +253,7 @@ if __name__ == "__main__":
         help="A folder containing the training data.",
     )
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
-    parser.add_argument("--overwrite_output_dir", action="store_true")
+    parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--train_batch_size", type=int, default=16)
@@ -269,15 +269,15 @@ if __name__ == "__main__":
     parser.add_argument("--adam_beta2", type=float, default=0.999)
     parser.add_argument("--adam_weight_decay", type=float, default=1e-6)
     parser.add_argument("--adam_epsilon", type=float, default=1e-08)
-    parser.add_argument("--use_ema", action="store_true", default=True)
+    parser.add_argument("--use_ema",  type=bool, default=True)
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
     parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.9999)
-    parser.add_argument("--push_to_hub", action="store_true")
-    parser.add_argument("--use_auth_token", action="store_true")
+    parser.add_argument("--push_to_hub",  type=bool, default=False)
+    parser.add_argument("--use_auth_token",  type=bool, default=False)
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
-    parser.add_argument("--hub_private_repo", action="store_true")
+    parser.add_argument("--hub_private_repo", type=bool, default=False)
     parser.add_argument("--logging_dir", type=str, default="logs")
     parser.add_argument(
         "--mixed_precision",
