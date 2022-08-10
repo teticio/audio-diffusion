@@ -1,3 +1,8 @@
+# TODO
+# run on sagemaker
+# run with deepspeed
+
+
 import os
 import re
 import io

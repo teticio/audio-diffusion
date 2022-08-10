@@ -39,8 +39,8 @@ def main(args):
 
     model = UNet2DModel(
         sample_size=args.resolution,
-        in_channels=3,
-        out_channels=3,
+        in_channels=1,
+        out_channels=1,
         layers_per_block=2,
         block_out_channels=(128, 128, 256, 256, 512, 512),
         down_block_types=(
@@ -101,7 +101,7 @@ def main(args):
         )
 
     def transforms(examples):
-        images = [augmentations(image.convert("RGB")) for image in examples["image"]]
+        images = [augmentations(image) for image in examples["image"]]
         return {"input": images}
 
     dataset.set_transform(transforms)
@@ -215,8 +215,7 @@ def main(args):
                     "test_samples", images_processed, epoch
                 )
                 for _, image in enumerate(images_processed):
-                    image = Image.fromarray(np.mean(image, axis=0).astype("uint8"))
-                    audio = mel.image_to_audio(image)
+                    audio = mel.image_to_audio(Image.fromarray(image[0]))
                     accelerator.trackers[0].writer.add_audio(
                         f"test_audio_{_}",
                         audio,
