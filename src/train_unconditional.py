@@ -1,3 +1,5 @@
+# based on https://github.com/huggingface/diffusers/blob/main/examples/train_unconditional.py
+
 import argparse
 import os
 
@@ -30,7 +32,8 @@ logger = get_logger(__name__)
 
 
 def main(args):
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    output_dir = os.environ.get("SM_MODEL_DIR", None) or args.output_dir
+    logging_dir = os.path.join(output_dir, args.logging_dir)
     accelerator = Accelerator(
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
@@ -122,7 +125,7 @@ def main(args):
     )
 
     ema_model = EMAModel(
-        model,
+        getattr(model, "module", model),
         inv_gamma=args.ema_inv_gamma,
         power=args.ema_power,
         max_value=args.ema_max_decay,
@@ -234,7 +237,7 @@ def main(args):
                         blocking=False,
                     )
                 else:
-                    pipeline.save_pretrained(args.output_dir)
+                    pipeline.save_pretrained(output_dir)
         accelerator.wait_for_everyone()
 
     accelerator.end_training()
