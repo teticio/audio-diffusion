@@ -11,7 +11,7 @@ Audio can be represented as images by transforming to a [mel spectrogram](https:
 A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the `test-model.ipynb` notebook for an example.
 
 ## Generate Mel spectrogram dataset from directory of audio files
-### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
+#### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
 
 ```bash
 python src/audio_to_images.py \
@@ -21,7 +21,7 @@ python src/audio_to_images.py \
   --output_dir data-test
 ```
 
-### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
+#### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 
 ```bash
 python src/audio_to_images.py \
@@ -31,7 +31,7 @@ python src/audio_to_images.py \
   --push_to_hub teticio\audio-diffusion-256
 ```
 ## Train model
-### Run training on local machine.
+#### Run training on local machine.
 
 ```bash
 accelerate launch --config_file accelerate_local.yaml \
@@ -48,7 +48,7 @@ accelerate launch --config_file accelerate_local.yaml \
   --mixed_precision no
 ```
 
-### Run training on local machine with `batch_size` of 1 and `gradient_accumulation_steps` 16 to compensate, so that 256x256 resolution model fits on commercial grade GPU.
+#### Run training on local machine with `batch_size` of 1 and `gradient_accumulation_steps` 16 to compensate, so that 256x256 resolution model fits on commercial grade GPU.
 
 ```bash
 accelerate launch --config_file accelerate_local.yaml \
@@ -65,7 +65,7 @@ accelerate launch --config_file accelerate_local.yaml \
   --mixed_precision no
 ```
 
-### Run training on SageMaker.
+#### Run training on SageMaker.
 
 ```bash
 accelerate launch --config_file accelerate_sagemaker.yaml \
