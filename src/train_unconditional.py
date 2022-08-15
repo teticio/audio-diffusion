@@ -20,7 +20,6 @@ from torchvision.transforms import (
     Compose,
     InterpolationMode,
     Normalize,
-    RandomHorizontalFlip,
     Resize,
     ToTensor,
 )
@@ -40,29 +39,32 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    model = UNet2DModel(
-        sample_size=args.resolution,
-        in_channels=1,
-        out_channels=1,
-        layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
-        down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=(
-            "UpBlock2D",
-            "AttnUpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-        ),
-    )
+    if args.from_pretrained is not None:
+        model = UNet2DModel.from_pretrained(args.from_pretrained)
+    else:
+        model = UNet2DModel(
+            sample_size=args.resolution,
+            in_channels=1,
+            out_channels=1,
+            layers_per_block=2,
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=(
+                "UpBlock2D",
+                "AttnUpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+            ),
+        )
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -76,7 +78,6 @@ def main(args):
         [
             Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
             CenterCrop(args.resolution),
-            RandomHorizontalFlip(),
             ToTensor(),
             Normalize([0.5], [0.5]),
         ]
@@ -142,11 +143,22 @@ def main(args):
 
     global_step = 0
     for epoch in range(args.num_epochs):
-        model.train()
         progress_bar = tqdm(
             total=len(train_dataloader), disable=not accelerator.is_local_main_process
         )
         progress_bar.set_description(f"Epoch {epoch}")
+
+        if epoch < args.start_epoch:
+            for step in range(len(train_dataloader)):
+                optimizer.step()
+                lr_scheduler.step()
+                progress_bar.update(1)
+                global_step += 1
+            if epoch == args.start_epoch - 1 and args.use_ema:
+                ema_model.optimization_step = global_step
+            continue
+
+        model.train()
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
@@ -271,12 +283,12 @@ if __name__ == "__main__":
     parser.add_argument("--adam_beta2", type=float, default=0.999)
     parser.add_argument("--adam_weight_decay", type=float, default=1e-6)
     parser.add_argument("--adam_epsilon", type=float, default=1e-08)
-    parser.add_argument("--use_ema",  type=bool, default=True)
+    parser.add_argument("--use_ema", type=bool, default=True)
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
     parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.9999)
-    parser.add_argument("--push_to_hub",  type=bool, default=False)
-    parser.add_argument("--use_auth_token",  type=bool, default=False)
+    parser.add_argument("--push_to_hub", type=bool, default=False)
+    parser.add_argument("--use_auth_token", type=bool, default=False)
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", type=bool, default=False)
@@ -293,6 +305,8 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--from_pretrained", type=str, default=None)
+    parser.add_argument("--start_epoch", type=int, default=0)
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
