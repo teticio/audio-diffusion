@@ -1,6 +1,6 @@
 ---
 title: Audio Diffusion
-emoji: 📉
+emoji: 🎵
 colorFrom: pink
 colorTo: blue
 sdk: gradio

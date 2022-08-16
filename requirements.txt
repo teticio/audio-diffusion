@@ -3,3 +3,4 @@ torch
 numpy
 Pillow
 diffusers
+librosa
