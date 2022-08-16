@@ -62,7 +62,7 @@ accelerate launch --config_file accelerate_local.yaml \
   --mixed_precision no
 ```
 
-#### Run training on local machine with `batch_size` of 1 and `gradient_accumulation_steps` 16 to compensate, so that 256x256 resolution model fits on commercial grade GPU.
+#### Run training on local machine with `batch_size` of 2 and `gradient_accumulation_steps` 8 to compensate, so that 256x256 resolution model fits on commercial grade GPU and push to hub.
 
 ```bash
 accelerate launch --config_file accelerate_local.yaml \
@@ -76,7 +76,10 @@ accelerate launch --config_file accelerate_local.yaml \
   --gradient_accumulation_steps 8 \
   --learning_rate 1e-4 \
   --lr_warmup_steps 500 \
-  --mixed_precision no
+  --mixed_precision no \
+  --push_to_hub True \
+  --hub_model_id teticio/audio-diffusion-256 \
+  --hub_token $(cat $HOME/.huggingface/token)
 ```
 
 #### Run training on SageMaker.
