@@ -1,3 +1,15 @@
+---
+title: Audio Diffusion
+emoji: 📉
+colorFrom: pink
+colorTo: blue
+sdk: gradio
+sdk_version: 3.1.4
+app_file: app.py
+pinned: false
+license: gpl-3.0
+---
+
 # audio-diffusion
 
 ### Apply [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) using the new Hugging Face [diffusers](https://github.com/huggingface/diffusers) package to synthesize music instead of images.
@@ -80,3 +92,18 @@ accelerate launch --config_file accelerate_sagemaker.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
+=======
+---
+title: Audio Diffusion
+emoji: 📉
+colorFrom: pink
+colorTo: blue
+sdk: gradio
+sdk_version: 3.1.4
+app_file: app.py
+pinned: false
+license: gpl-3.0
+---
+
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+>>>>>>> 76320e6ba1ee26f1d98e3cfb63cc5c057b823319
