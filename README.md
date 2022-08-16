@@ -22,6 +22,8 @@ Audio can be represented as images by transforming to a [mel spectrogram](https:
 
 A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the `test-model.ipynb` notebook for an example.
 
+You can play around with the model I trained on about 500 songs from my Spotify "liked" playlist [here](https://huggingface.co/spaces/teticio/audio-diffusion)
+
 ## Generate Mel spectrogram dataset from directory of audio files
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
 
@@ -92,18 +94,3 @@ accelerate launch --config_file accelerate_sagemaker.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
-=======
----
-title: Audio Diffusion
-emoji: 📉
-colorFrom: pink
-colorTo: blue
-sdk: gradio
-sdk_version: 3.1.4
-app_file: app.py
-pinned: false
-license: gpl-3.0
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
->>>>>>> 76320e6ba1ee26f1d98e3cfb63cc5c057b823319
