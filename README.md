@@ -71,9 +71,9 @@ accelerate launch --config_file accelerate_local.yaml \
   --resolution 256 \
   --output_dir ddpm-ema-audio-256 \
   --num_epochs 100 \
-  --train_batch_size 1 \
-  --eval_batch_size 1 \
-  --gradient_accumulation_steps 16 \
+  --train_batch_size 2 \
+  --eval_batch_size 2 \
+  --gradient_accumulation_steps 8 \
   --learning_rate 1e-4 \
   --lr_warmup_steps 500 \
   --mixed_precision no
