@@ -6,7 +6,7 @@
 
 ![mel spectrogram](mel.png)
 
-Audio can be represented as images by transforming to a [mel spectrogram](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum), such as the one shown above. The class `Mel` in `mel.py` can convert a slice of audio into a mel spectrogram of `x_res` x `y_res` and vice-versa. The higher the resolution, the less audio information will be lost. You can see how this works in the `test-mel.ipynb` notebook.
+Audio can be represented as images by transforming to a [mel spectrogram](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum), such as the one shown above. The class `Mel` in `mel.py` can convert a slice of audio into a mel spectrogram of `x_res` x `y_res` and vice versa. The higher the resolution, the less audio information will be lost. You can see how this works in the `test-mel.ipynb` notebook.
 
 A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the `test-model.ipynb` notebook for an example.
 
