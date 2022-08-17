@@ -28,7 +28,8 @@ if __name__ == "__main__":
     demo = gr.Interface(
         fn=generate_spectrogram_and_audio,
         title="Audio Diffusion",
-        description=f"Generate audio using Huggingface diffusers",
+        description=f"Generate audio using Huggingface diffusers.\
+            This takes about 20 minutes without a GPU, so why not make yourself a cup of tea in the meantime?",
         inputs=[],
         outputs=[
             gr.Image(label="Mel spectrogram", image_mode="L"),

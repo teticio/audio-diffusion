@@ -241,13 +241,16 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 if args.push_to_hub:
-                    push_to_hub(
-                        args,
-                        pipeline,
-                        repo,
-                        commit_message=f"Epoch {epoch}",
-                        blocking=False,
-                    )
+                    try:
+                        push_to_hub(
+                            args,
+                            pipeline,
+                            repo,
+                            commit_message=f"Epoch {epoch}",
+                            blocking=False,
+                        )
+                    except NameError:  # current version of diffusers has a little bug
+                        pass
                 else:
                     pipeline.save_pretrained(output_dir)
         accelerator.wait_for_everyone()

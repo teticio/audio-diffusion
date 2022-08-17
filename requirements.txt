@@ -1,6 +1,7 @@
-# for Hugging Face spaces
+# for Hugging Face Spaces
 torch
 numpy
 Pillow
 diffusers
 librosa
+datasets
