@@ -207,6 +207,13 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+                pipeline = DDPMPipeline(
+                    unet=accelerator.unwrap_model(
+                        ema_model.averaged_model if args.use_ema else model
+                    ),
+                    scheduler=noise_scheduler,
+                )
+                
                 # save the model
                 if args.push_to_hub:
                     try:
@@ -221,13 +228,6 @@ def main(args):
                         pass
                 else:
                     pipeline.save_pretrained(output_dir)
-
-                pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model
-                    ),
-                    scheduler=noise_scheduler,
-                )
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
