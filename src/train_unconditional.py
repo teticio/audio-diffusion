@@ -206,7 +206,22 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+                # save the model
+                if args.push_to_hub:
+                    try:
+                        push_to_hub(
+                            args,
+                            pipeline,
+                            repo,
+                            commit_message=f"Epoch {epoch}",
+                            blocking=False,
+                        )
+                    except NameError:  # current version of diffusers has a little bug
+                        pass
+                else:
+                    pipeline.save_pretrained(output_dir)
+
                 pipeline = DDPMPipeline(
                     unet=accelerator.unwrap_model(
                         ema_model.averaged_model if args.use_ema else model
@@ -237,22 +252,6 @@ def main(args):
                         epoch,
                         sample_rate=mel.get_sample_rate(),
                     )
-
-            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                # save the model
-                if args.push_to_hub:
-                    try:
-                        push_to_hub(
-                            args,
-                            pipeline,
-                            repo,
-                            commit_message=f"Epoch {epoch}",
-                            blocking=False,
-                        )
-                    except NameError:  # current version of diffusers has a little bug
-                        pass
-                else:
-                    pipeline.save_pretrained(output_dir)
         accelerator.wait_for_everyone()
 
     accelerator.end_training()
