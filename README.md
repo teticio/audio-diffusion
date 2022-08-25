@@ -78,7 +78,7 @@ accelerate launch --config_file accelerate_local.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no \
   --push_to_hub True \
-  --hub_model_id teticio/audio-diffusion-256 \
+  --hub_model_id audio-diffusion-256 \
   --hub_token $(cat $HOME/.huggingface/token)
 ```
 
