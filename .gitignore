@@ -4,3 +4,5 @@ __pycache__
 data*
 ddpm-ema-audio-*
 flagged
+build
+audiodiffusion.egg-info

@@ -24,8 +24,9 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
+from librosa.util import normalize
 
-from mel import Mel
+from audiodiffusion.mel import Mel
 
 logger = get_logger(__name__)
 
@@ -65,7 +66,8 @@ def main(args):
                 "UpBlock2D",
             ),
         )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
+                                    tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -74,20 +76,17 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    augmentations = Compose(
-        [
-            Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
-            CenterCrop(args.resolution),
-            ToTensor(),
-            Normalize([0.5], [0.5]),
-        ]
-    )
+    augmentations = Compose([
+        Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
+        CenterCrop(args.resolution),
+        ToTensor(),
+        Normalize([0.5], [0.5]),
+    ])
 
     if args.dataset_name is not None:
         if os.path.exists(args.dataset_name):
-            dataset = load_from_disk(args.dataset_name, args.dataset_config_name)[
-                "train"
-            ]
+            dataset = load_from_disk(args.dataset_name,
+                                     args.dataset_config_name)["train"]
         else:
             dataset = load_dataset(
                 args.dataset_name,
@@ -110,20 +109,18 @@ def main(args):
 
     dataset.set_transform(transforms)
     train_dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.train_batch_size, shuffle=True
-    )
+        dataset, batch_size=args.train_batch_size, shuffle=True)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps,
-        num_training_steps=(len(train_dataloader) * args.num_epochs)
-        // args.gradient_accumulation_steps,
+        num_training_steps=(len(train_dataloader) * args.num_epochs) //
+        args.gradient_accumulation_steps,
     )
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler
-    )
+        model, optimizer, train_dataloader, lr_scheduler)
 
     ema_model = EMAModel(
         getattr(model, "module", model),
@@ -139,13 +136,14 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
-    mel = Mel(x_res=args.resolution, y_res=args.resolution, hop_length=args.hop_length)
+    mel = Mel(x_res=args.resolution,
+              y_res=args.resolution,
+              hop_length=args.hop_length)
 
     global_step = 0
     for epoch in range(args.num_epochs):
-        progress_bar = tqdm(
-            total=len(train_dataloader), disable=not accelerator.is_local_main_process
-        )
+        progress_bar = tqdm(total=len(train_dataloader),
+                            disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
 
         if epoch < args.start_epoch:
@@ -168,13 +166,14 @@ def main(args):
             timesteps = torch.randint(
                 0,
                 noise_scheduler.num_train_timesteps,
-                (bsz,),
+                (bsz, ),
                 device=clean_images.device,
             ).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
+            noisy_images = noise_scheduler.add_noise(clean_images, noise,
+                                                     timesteps)
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
@@ -209,11 +208,10 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 pipeline = DDPMPipeline(
                     unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model
-                    ),
+                        ema_model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
                 )
-                
+
                 # save the model
                 if args.push_to_hub:
                     try:
@@ -238,17 +236,16 @@ def main(args):
                 )["sample"]
 
                 # denormalize the images and save to tensorboard
-                images_processed = (
-                    (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
-                )
+                images_processed = ((images *
+                                     255).round().astype("uint8").transpose(
+                                         0, 3, 1, 2))
                 accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed, epoch
-                )
+                    "test_samples", images_processed, epoch)
                 for _, image in enumerate(images_processed):
                     audio = mel.image_to_audio(Image.fromarray(image[0]))
                     accelerator.trackers[0].writer.add_audio(
                         f"test_audio_{_}",
-                        audio,
+                        normalize(audio),
                         epoch,
                         sample_rate=mel.get_sample_rate(),
                     )
@@ -258,7 +255,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(
+        description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--dataset_name", type=str, default=None)
     parser.add_argument("--dataset_config_name", type=str, default=None)
@@ -303,8 +301,7 @@ if __name__ == "__main__":
         help=(
             "Whether to use mixed precision. Choose"
             "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-            "and an Nvidia Ampere GPU."
-        ),
+            "and an Nvidia Ampere GPU."),
     )
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--from_pretrained", type=str, default=None)

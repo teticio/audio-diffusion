@@ -1,8 +1,8 @@
-# for Hugging Face Spaces
 torch
 numpy
 Pillow
-diffusers
+diffusers>=0.2.4
 librosa
 datasets
 gradio
+streamlit

@@ -28,7 +28,7 @@ You can play around with the model I trained on about 500 songs from my Spotify 
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
 
 ```bash
-python src/audio_to_images.py \
+python audiodiffusion/audio_to_images.py \
   --resolution 64 \
   --hop_length 1024\
   --input_dir path-to-audio-files \
@@ -38,7 +38,7 @@ python src/audio_to_images.py \
 #### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 
 ```bash
-python src/audio_to_images.py \
+python audiodiffusion/audio_to_images.py \
   --resolution 256 \
   --input_dir path-to-audio-files \
   --output_dir data-256 \
@@ -49,7 +49,7 @@ python src/audio_to_images.py \
 
 ```bash
 accelerate launch --config_file accelerate_local.yaml \
-  src/train_unconditional.py \
+  audiodiffusion/train_unconditional.py \
   --dataset_name data-64 \
   --resolution 64 \
   --hop_length 1024 \
@@ -66,7 +66,7 @@ accelerate launch --config_file accelerate_local.yaml \
 
 ```bash
 accelerate launch --config_file accelerate_local.yaml \
-  src/train_unconditional.py \
+  audiodiffusion/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
   --output_dir ddpm-ema-audio-256 \
@@ -86,7 +86,7 @@ accelerate launch --config_file accelerate_local.yaml \
 
 ```bash
 accelerate launch --config_file accelerate_sagemaker.yaml \
-  src/train_unconditional.py \
+  audiodiffusion/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
   --output_dir ddpm-ema-audio-256 \
