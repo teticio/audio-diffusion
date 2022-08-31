@@ -22,7 +22,7 @@ Audio can be represented as images by transforming to a [mel spectrogram](https:
 
 A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the `test_model.ipynb` and `test_model_breaks.ipynb` notebooks for examples.
 
-You can play around with the model I trained on about 500 songs from my Spotify "liked" playlist on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test-model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some samples I generated [here](https://soundcloud.com/teticio2/sets/audio-diffusion).
+You can play around with the model I trained on about 500 songs from my Spotify "liked" playlist on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some samples I generated [here](https://soundcloud.com/teticio2/sets/audio-diffusion).
 
 ## Generate Mel spectrogram dataset from directory of audio files
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
