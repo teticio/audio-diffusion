@@ -16,13 +16,22 @@ license: gpl-3.0
 
 ---
 
+**UPDATE**: I've trained a new [model](https://huggingface.co/teticio/audio-diffusion-breaks-256) on 30,000 samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com). The idea is that the model could be used to generate loops or "breaks" that can be sampled to make new tracks. People ("crate diggers") go to a lot of lengths or are willing to pay a lot of money to find breaks in old records. See [`test_model_breaks.ipynb`](https://github.com/teticio/audio-diffusion/blob/main/notebooks/test_model_breaks.ipynb) for details.
+
+---
+
 ![mel spectrogram](mel.png)
 
-Audio can be represented as images by transforming to a [mel spectrogram](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum), such as the one shown above. The class `Mel` in `mel.py` can convert a slice of audio into a mel spectrogram of `x_res` x `y_res` and vice versa. The higher the resolution, the less audio information will be lost. You can see how this works in the `test_mel.ipynb` notebook.
+---
 
-A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the `test_model.ipynb` and `test_model_breaks.ipynb` notebooks for examples.
+Audio can be represented as images by transforming to a [mel spectrogram](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum), such as the one shown above. The class `Mel` in `mel.py` can convert a slice of audio into a mel spectrogram of `x_res` x `y_res` and vice versa. The higher the resolution, the less audio information will be lost. You can see how this works in the [`test_mel.ipynb`](https://github.com/teticio/audio-diffusion/blob/main/notebooks/test_mel.ipynb) notebook.
 
-You can play around with the model I trained on about 500 songs from my Spotify "liked" playlist on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some samples I generated [here](https://soundcloud.com/teticio2/sets/audio-diffusion).
+A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio. See the [`test_model.ipynb`](https://github.com/teticio/audio-diffusion/blob/main/notebooks/test_model.ipynb) and [`test_model_breaks.ipynb`](https://github.com/teticio/audio-diffusion/blob/main/notebooks/test_model_breaks.ipynb) notebooks for examples.
+
+You can play around with the model I trained on about 500 songs from my Spotify "liked" playlist on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some automatically generated loops [here](https://soundcloud.com/teticio2/sets/audio-diffusion-loops).
+
+
+---
 
 ## Generate Mel spectrogram dataset from directory of audio files
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
@@ -30,7 +39,7 @@ You can play around with the model I trained on about 500 songs from my Spotify 
 ```bash
 python audio_to_images.py \
   --resolution 64 \
-  --hop_length 1024\
+  --hop_length 1024 \
   --input_dir path-to-audio-files \
   --output_dir data-test
 ```

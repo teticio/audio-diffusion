@@ -40,7 +40,7 @@ def main(args):
     )
 
     if args.from_pretrained is not None:
-        model = UNet2DModel.from_pretrained(args.from_pretrained)
+        model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
     else:
         model = UNet2DModel(
             sample_size=args.resolution,
