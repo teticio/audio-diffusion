@@ -43,6 +43,16 @@ class AudioDiffusion:
 
     @staticmethod
     def loop_it(audio, sample_rate, loops=12):
+        """Loop audio
+
+        Args:
+            audio (array): audio as numpy array
+            sample_rate (int): sample rate of audio
+            loops (int): number of times to loop
+
+        Returns:
+            (float, array): sample rate and raw audio or None
+        """
         tempo, beats = beat_track(y=audio, sr=sample_rate, units='samples')
         if len(beats) > 8:
             return np.tile(audio[beats[0]:beats[8]], loops)
