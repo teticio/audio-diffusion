@@ -1,6 +1,8 @@
+import numpy as np
 from PIL import Image
 from torch import cuda
 from diffusers import DDPMPipeline
+from librosa.beat import beat_track
 
 from .mel import Mel
 
@@ -38,3 +40,12 @@ class AudioDiffusion:
         image = Image.fromarray(images[0][0])
         audio = self.mel.image_to_audio(image)
         return image, (self.mel.get_sample_rate(), audio)
+
+    @staticmethod
+    def loop_it(audio, sample_rate, loops=12):
+        tempo, beats = beat_track(y=audio, sr=sample_rate, units='samples')
+        if len(beats) > 8:
+            return np.tile(audio[beats[0]:beats[8]], loops)
+        if len(beats) > 4:
+            return np.tile(audio[beats[0]:beats[4]], loops)
+        return None
