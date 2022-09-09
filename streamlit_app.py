@@ -9,8 +9,8 @@ from audiodiffusion import AudioDiffusion
 if __name__ == "__main__":
     st.header("Audio Diffusion")
     st.markdown("Generate audio using Huggingface diffusers.\
-        This takes about 20 minutes without a GPU, so why not make yourself a cup of tea in the meantime?"
-                )
+        This takes about 20 minutes without a GPU, so why not make yourself a \
+            cup of tea in the meantime?")
 
     model_id = st.selectbox(
         "Model",

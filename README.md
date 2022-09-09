@@ -9,7 +9,7 @@ app_file: app.py
 pinned: false
 license: gpl-3.0
 ---
-# audio-diffusion [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb)
+# audio-diffusion [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/gradio_app.ipynb)
 
 ### Apply [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) using the new Hugging Face [diffusers](https://github.com/huggingface/diffusers) package to synthesize music instead of images.
 
