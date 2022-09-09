@@ -41,5 +41,3 @@ if __name__ == "__main__":
     parser.add_argument("--server", type=int)
     args = parser.parse_args()
     demo.launch(server_name=args.server or "0.0.0.0", server_port=args.port)
-else:
-    demo.launch(share=True)
