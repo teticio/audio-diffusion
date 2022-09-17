@@ -1,13 +1,18 @@
 import os
 import re
 import io
+import logging
 import argparse
 
+import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 from datasets import Dataset, DatasetDict, Features, Image, Value
 
 from audiodiffusion.mel import Mel
+
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger('audio_to_images')
 
 
 def main(args):
@@ -32,6 +37,11 @@ def main(args):
                 image = mel.audio_slice_to_image(slice)
                 assert (image.width == args.resolution
                         and image.height == args.resolution)
+                # skip completely silent slices
+                if all(np.frombuffer(image.tobytes(), dtype=np.uint8) == 255):
+                    logger.warn('File %s slice %d is completely silent',
+                                audio_file, slice)
+                    continue
                 with io.BytesIO() as output:
                     image.save(output, format="PNG")
                     bytes = output.getvalue()
@@ -43,6 +53,9 @@ def main(args):
                     "slice": slice,
                 }])
     finally:
+        if len(examples) == 0:
+            logger.warn('No valid audio files were found.')
+            return
         ds = Dataset.from_pandas(
             pd.DataFrame(examples),
             features=Features({
