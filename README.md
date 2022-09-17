@@ -49,7 +49,7 @@ python audio_to_images.py \
   --resolution 256 \
   --input_dir path-to-audio-files \
   --output_dir data-256 \
-  --push_to_hub teticio\audio-diffusion-256
+  --push_to_hub teticio/audio-diffusion-256
 ```
 ## Train model
 #### Run training on local machine.
