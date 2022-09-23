@@ -24,7 +24,8 @@ demo = gr.Interface(fn=generate_spectrogram_audio_and_loop,
                         gr.Dropdown(label="Model",
                                     choices=[
                                         "teticio/audio-diffusion-256",
-                                        "teticio/audio-diffusion-breaks-256"
+                                        "teticio/audio-diffusion-breaks-256",
+                                        "teticio/audio-diffusion-instrumental-hiphop-256"
                                     ],
                                     value="teticio/audio-diffusion-256")
                     ],

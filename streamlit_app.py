@@ -12,9 +12,10 @@ if __name__ == "__main__":
         This takes about 20 minutes without a GPU, so why not make yourself a \
             cup of tea in the meantime?")
 
-    model_id = st.selectbox(
-        "Model",
-        ["teticio/audio-diffusion-256", "teticio/audio-diffusion-breaks-256"])
+    model_id = st.selectbox("Model", [
+        "teticio/audio-diffusion-256", "teticio/audio-diffusion-breaks-256",
+        "teticio/audio-diffusion-instrumental-hiphop-256"
+    ])
     audio_diffusion = AudioDiffusion(model_id=model_id)
 
     if st.button("Generate"):
