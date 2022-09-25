@@ -9,7 +9,7 @@ from librosa.beat import beat_track
 
 from .mel import Mel
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 
 class AudioDiffusion:
