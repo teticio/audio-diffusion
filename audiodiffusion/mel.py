@@ -46,9 +46,12 @@ class Mel:
             audio_file (str): must be a file on disk due to Librosa limitation or
             raw_audio (np.ndarray): audio as numpy array
         """
-        self.y, _ = librosa.load(
-            audio_file,
-            mono=True) if audio_file is not None else raw_audio, None
+        if audio_file is not None:
+            self.y, _ = librosa.load(
+                audio_file,
+                mono=True)
+        else:
+            self.y = raw_audio
 
     def get_number_of_slices(self) -> int:
         """Get number of slices in audio.
