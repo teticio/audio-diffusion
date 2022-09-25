@@ -6,3 +6,4 @@ librosa
 datasets
 gradio
 streamlit
+tensorboard
