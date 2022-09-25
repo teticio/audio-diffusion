@@ -80,4 +80,8 @@ if __name__ == "__main__":
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--push_to_hub", type=str, default=None)
     args = parser.parse_args()
+    if args.input_dir is None:
+        raise ValueError(
+            "You must specify an input directory for the audio files."
+        )    
     main(args)

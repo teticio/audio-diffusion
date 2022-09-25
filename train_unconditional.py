@@ -315,5 +315,8 @@ if __name__ == "__main__":
         raise ValueError(
             "You must specify either a dataset name from the hub or a train data directory."
         )
+    if args.dataset_name is not None and args.dataset_name == args.hub_model_id:
+        raise ValueError(
+            "The local dataset name must be different from the hub model id.")
 
     main(args)

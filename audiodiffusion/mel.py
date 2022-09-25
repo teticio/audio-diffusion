@@ -11,12 +11,12 @@ class Mel:
 
     def __init__(
         self,
-        x_res=256,
-        y_res=256,
-        sample_rate=22050,
-        n_fft=2048,
-        hop_length=512,
-        top_db=80,
+        x_res: int = 256,
+        y_res: int = 256,
+        sample_rate: int = 22050,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        top_db: int = 80,
     ):
         """Class to convert audio to mel spectrograms and vice versa.
 
@@ -39,15 +39,18 @@ class Mel:
         self.top_db = top_db
         self.y = None
 
-    def load_audio(self, audio_file):
+    def load_audio(self, audio_file: str = None, raw_audio: np.ndarray = None):
         """Load audio.
 
         Args:
-            file (str): must be a file on disk due to Librosa limitation
+            audio_file (str): must be a file on disk due to Librosa limitation or
+            raw_audio (np.ndarray): audio as numpy array
         """
-        self.y, _ = librosa.load(audio_file, mono=True)
+        self.y, _ = librosa.load(
+            audio_file,
+            mono=True) if audio_file is not None else raw_audio, None
 
-    def get_number_of_slices(self):
+    def get_number_of_slices(self) -> int:
         """Get number of slices in audio.
 
         Returns:
@@ -55,7 +58,18 @@ class Mel:
         """
         return len(self.y) // self.slice_size
 
-    def get_sample_rate(self):
+    def get_audio_slice(self, slice: int = 0) -> np.ndarray:
+        """Get slice of audio.
+
+        Args:
+            slice (int): slice number of audio (out of get_number_of_slices())
+
+        Returns:
+            np.ndarray: audio as numpy array
+        """
+        return self.y[self.slice_size * slice:self.slice_size * (slice + 1)]
+
+    def get_sample_rate(self) -> int:
         """Get sample rate:
 
         Returns:
@@ -63,7 +77,7 @@ class Mel:
         """
         return self.sr
 
-    def audio_slice_to_image(self, slice):
+    def audio_slice_to_image(self, slice: int) -> Image.Image:
         """Convert slice of audio to spectrogram.
 
         Args:
@@ -73,7 +87,7 @@ class Mel:
             PIL Image: grayscale image of x_res x y_res
         """
         S = librosa.feature.melspectrogram(
-            y=self.y[self.slice_size * slice:self.slice_size * (slice + 1)],
+            y=self.get_audio_slice(slice),
             sr=self.sr,
             n_fft=self.n_fft,
             hop_length=self.hop_length,
@@ -86,14 +100,14 @@ class Mel:
         image = Image.frombytes("L", log_S.shape, bytedata.tobytes())
         return image
 
-    def image_to_audio(self, image):
+    def image_to_audio(self, image: Image.Image) -> np.ndarray:
         """Converts spectrogram to audio.
 
         Args:
             image (PIL Image): x_res x y_res grayscale image
 
         Returns:
-            audio (array): raw audio
+            audio (np.ndarray): raw audio
         """
         bytedata = np.frombuffer(image.tobytes(), dtype="uint8").reshape(
             (image.width, image.height))
