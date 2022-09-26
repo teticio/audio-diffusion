@@ -4,12 +4,12 @@ import torch
 import numpy as np
 from PIL import Image
 from tqdm.auto import tqdm
-from diffusers import DDPMPipeline
 from librosa.beat import beat_track
+from diffusers import DDPMPipeline, DDPMScheduler
 
 from .mel import Mel
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 
 
 class AudioDiffusion:
@@ -60,7 +60,7 @@ class AudioDiffusion:
         raw_audio: np.ndarray = None,
         slice: int = 0,
         start_step: int = 0,
-        steps: int = 1000,
+        steps: int = None,
         generator: torch.Generator = None
     ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram from audio input and convert to audio.
@@ -70,7 +70,7 @@ class AudioDiffusion:
             raw_audio (np.ndarray): audio as numpy array
             slice (int): slice number of audio to convert
             start_step (int): step to start from
-            steps (int): number of de-noising steps to perform
+            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
             generator (torch.Generator): random number generator or None
 
         Returns:
@@ -80,6 +80,10 @@ class AudioDiffusion:
 
         # It would be better to derive a class from DDPMDiffusionPipeline
         # but currently the return type ImagePipelineOutput cannot be imported.
+        if steps is None:
+            steps = self.ddpm.scheduler.num_train_timesteps
+        scheduler = DDPMScheduler(num_train_timesteps=steps)
+        scheduler.set_timesteps(steps)
         images = torch.randn(
             (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
              self.ddpm.unet.sample_size),
@@ -94,16 +98,17 @@ class AudioDiffusion:
                                              input_image.height))
             input_image = ((input_image / 255) * 2 - 1)
             if start_step > 0:
-                images[0][0] = self.ddpm.scheduler.add_noise(
-                torch.tensor(input_image[np.newaxis, np.newaxis, :]), images,
-                steps - start_step)
+                images[0][0] = scheduler.add_noise(
+                    torch.tensor(input_image[np.newaxis, np.newaxis, :]),
+                    images, steps - start_step)
 
         images = images.to(self.ddpm.device)
-        self.ddpm.scheduler.set_timesteps(steps)
-        for t in self.progress_bar(self.ddpm.scheduler.timesteps[start_step:]):
+        for t in self.progress_bar(scheduler.timesteps[start_step:]):
             model_output = self.ddpm.unet(images, t)['sample']
-            images = self.ddpm.scheduler.step(
-                model_output, t, images, generator=generator)['prev_sample']
+            images = scheduler.step(model_output,
+                                    t,
+                                    images,
+                                    generator=generator)['prev_sample']
         images = (images / 2 + 0.5).clamp(0, 1)
         images = images.cpu().permute(0, 2, 3, 1).numpy()
 
