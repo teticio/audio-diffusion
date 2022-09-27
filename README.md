@@ -15,7 +15,9 @@ license: gpl-3.0
 
 ---
 
-**UPDATE**: I've trained a new [model](https://huggingface.co/teticio/audio-diffusion-breaks-256) on 30,000 samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com). The idea is that the model could be used to generate loops or "breaks" that can be sampled to make new tracks. People ("crate diggers") go to a lot of lengths or are willing to pay a lot of money to find breaks in old records.
+**UPDATE**: 
+
+You can now generate an audio based on a previous one. You can use this to generate variations of the same audio or even to "remix" a track (via a sort of "style transfer"). You can find examples of how to do this in the [`test_model.ipynb`](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) notebook.
 
 ---
 
@@ -27,7 +29,14 @@ Audio can be represented as images by transforming to a [mel spectrogram](https:
 
 A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio.
 
-You can play around with the model on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some automatically generated loops [here](https://soundcloud.com/teticio2/sets/audio-diffusion-loops).
+You can play around with some pretrained models on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some automatically generated loops [here](https://soundcloud.com/teticio2/sets/audio-diffusion-loops).
+
+
+| Model | Dataset | Description |
+|-------|---------|-------------|
+| https://huggingface.co/teticio/audio-diffusion-256 | https://huggingface.co/datasets/teticio/audio-diffusion-256 | My "liked" Spotify playlist |
+| https://huggingface.co/teticio/audio-diffusion-breaks-256 | https://huggingface.co/datasets/teticio/audio-diffusion-breaks-256 | Samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com) |
+| https://huggingface.co/teticio/audio-diffusion-instrumental-hiphop-256 | https://huggingface.co/datasets/teticio/audio-diffusion-instrumental-hiphop-256 | Instrumental Hip Hop music |
 
 ---
 
