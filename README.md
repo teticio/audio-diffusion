@@ -34,9 +34,9 @@ You can play around with some pretrained models on [Google Colab](https://colab.
 
 | Model | Dataset | Description |
 |-------|---------|-------------|
-| https://huggingface.co/teticio/audio-diffusion-256 | https://huggingface.co/datasets/teticio/audio-diffusion-256 | My "liked" Spotify playlist |
-| https://huggingface.co/teticio/audio-diffusion-breaks-256 | https://huggingface.co/datasets/teticio/audio-diffusion-breaks-256 | Samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com) |
-| https://huggingface.co/teticio/audio-diffusion-instrumental-hiphop-256 | https://huggingface.co/datasets/teticio/audio-diffusion-instrumental-hiphop-256 | Instrumental Hip Hop music |
+| [teticio/audio-diffusion-256](https://huggingface.co/teticio/audio-diffusion-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | My "liked" Spotify playlist |
+| [teticio/audio-diffusion-breaks-256](https://huggingface.co/teticio/audio-diffusion-breaks-256) | [teticio/audio-diffusion-breaks-256](https://huggingface.co/datasets/teticio/audio-diffusion-breaks-256) | Samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com) |
+| [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/teticio/audio-diffusion-instrumental-hiphop-256) | [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/datasets/teticio/audio-diffusion-instrumental-hiphop-256) | Instrumental Hip Hop music |
 
 ---
 
