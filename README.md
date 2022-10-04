@@ -15,8 +15,12 @@ license: gpl-3.0
 
 ---
 
-**UPDATE**: 
+**UPDATES**: 
 
+4/10/2022
+It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
+
+27/9/2022
 You can now generate an audio based on a previous one. You can use this to generate variations of the same audio or even to "remix" a track (via a sort of "style transfer"). You can find examples of how to do this in the [`test_model.ipynb`](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) notebook.
 
 ---

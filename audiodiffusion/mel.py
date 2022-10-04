@@ -37,7 +37,7 @@ class Mel:
         self.slice_size = self.x_res * self.hop_length - 1
         self.fmax = self.sr / 2
         self.top_db = top_db
-        self.y = None
+        self.audio = None
 
     def load_audio(self, audio_file: str = None, raw_audio: np.ndarray = None):
         """Load audio.
@@ -47,11 +47,16 @@ class Mel:
             raw_audio (np.ndarray): audio as numpy array
         """
         if audio_file is not None:
-            self.y, _ = librosa.load(
-                audio_file,
-                mono=True)
+            self.audio, _ = librosa.load(audio_file, mono=True)
         else:
-            self.y = raw_audio
+            self.audio = raw_audio
+
+        # Pad with silence if necessary.
+        if len(self.audio) < self.x_res * self.hop_length:
+            self.audio = np.concatenate([
+                self.audio,
+                np.zeros((self.x_res * self.hop_length - len(self.audio), ))
+            ])
 
     def get_number_of_slices(self) -> int:
         """Get number of slices in audio.
@@ -59,7 +64,7 @@ class Mel:
         Returns:
             int: number of spectograms audio can be sliced into
         """
-        return len(self.y) // self.slice_size
+        return len(self.audio) // self.slice_size
 
     def get_audio_slice(self, slice: int = 0) -> np.ndarray:
         """Get slice of audio.
@@ -70,7 +75,8 @@ class Mel:
         Returns:
             np.ndarray: audio as numpy array
         """
-        return self.y[self.slice_size * slice:self.slice_size * (slice + 1)]
+        return self.audio[self.slice_size * slice:self.slice_size *
+                          (slice + 1)]
 
     def get_sample_rate(self) -> int:
         """Get sample rate:

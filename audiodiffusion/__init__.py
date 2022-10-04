@@ -9,7 +9,7 @@ from diffusers import DDPMPipeline, DDPMScheduler
 
 from .mel import Mel
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 
 
 class AudioDiffusion:
@@ -61,7 +61,9 @@ class AudioDiffusion:
         slice: int = 0,
         start_step: int = 0,
         steps: int = None,
-        generator: torch.Generator = None
+        generator: torch.Generator = None,
+        mask_start_secs: float = 0,
+        mask_end_secs: float = 0
     ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
@@ -72,6 +74,8 @@ class AudioDiffusion:
             start_step (int): step to start from
             steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
             generator (torch.Generator): random number generator or None
+            mask_start_secs (float): number of seconds of audio to mask (not generate) at start
+            mask_end_secs (float): number of seconds of audio to mask (not generate) at end
 
         Returns:
             PIL Image: mel spectrogram
@@ -84,31 +88,51 @@ class AudioDiffusion:
             steps = self.ddpm.scheduler.num_train_timesteps
         scheduler = DDPMScheduler(num_train_timesteps=steps)
         scheduler.set_timesteps(steps)
-        images = torch.randn(
+        mask = None
+        images = noise = torch.randn(
             (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
              self.ddpm.unet.sample_size),
             generator=generator,
         )
+
         if audio_file is not None or raw_audio is not None:
             self.mel.load_audio(audio_file, raw_audio)
             input_image = self.mel.audio_slice_to_image(slice)
             input_image = np.frombuffer(input_image.tobytes(),
                                         dtype="uint8").reshape(
-                                            (input_image.width,
-                                             input_image.height))
+                                            (input_image.height,
+                                             input_image.width))
             input_image = ((input_image / 255) * 2 - 1)
+
             if start_step > 0:
-                images[0][0] = scheduler.add_noise(
+                images[0, 0] = scheduler.add_noise(
                     torch.tensor(input_image[np.newaxis, np.newaxis, :]),
-                    images, steps - start_step)
+                    noise, steps - start_step)
+
+            mask_start = int(mask_start_secs * self.mel.get_sample_rate() /
+                             self.mel.hop_length)
+            mask_end = int(mask_end_secs * self.mel.get_sample_rate() /
+                           self.mel.hop_length)
+            mask = scheduler.add_noise(
+                torch.tensor(input_image[np.newaxis, np.newaxis, :]), noise,
+                scheduler.timesteps[start_step:])
 
         images = images.to(self.ddpm.device)
-        for t in self.progress_bar(scheduler.timesteps[start_step:]):
+        for step, t in enumerate(
+                self.progress_bar(scheduler.timesteps[start_step:])):
             model_output = self.ddpm.unet(images, t)['sample']
             images = scheduler.step(model_output,
                                     t,
                                     images,
                                     generator=generator)['prev_sample']
+
+            if mask is not None:
+                if mask_start > 0:
+                    images[0, 0, :, :mask_start] = mask[step,
+                                                        0, :, :mask_start]
+                if mask_end > 0:
+                    images[0, 0, :, -mask_end:] = mask[step, 0, :, -mask_end:]
+
         images = (images / 2 + 0.5).clamp(0, 1)
         images = images.cpu().permute(0, 2, 3, 1).numpy()
 
