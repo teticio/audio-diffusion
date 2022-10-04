@@ -92,7 +92,7 @@ class AudioDiffusion:
         images = noise = torch.randn(
             (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
              self.ddpm.unet.sample_size),
-            generator=generator,
+            generator=generator
         )
 
         if audio_file is not None or raw_audio is not None:
