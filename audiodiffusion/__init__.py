@@ -9,7 +9,7 @@ from diffusers import DDPMPipeline, DDPMScheduler
 
 from .mel import Mel
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 
 
 class AudioDiffusion:
@@ -17,6 +17,10 @@ class AudioDiffusion:
     def __init__(self,
                  model_id: str = "teticio/audio-diffusion-256",
                  resolution: int = 256,
+                 sample_rate: int = 22050,
+                 n_fft: int = 2048,
+                 hop_length: int = 512,
+                 top_db: int = 80,
                  cuda: bool = torch.cuda.is_available(),
                  progress_bar: Iterable = tqdm):
         """Class for generating audio using Denoising Diffusion Probabilistic Models.
@@ -24,10 +28,19 @@ class AudioDiffusion:
         Args:
             model_id (String): name of model (local directory or Hugging Face Hub)
             resolution (int): size of square mel spectrogram in pixels
+            sample_rate (int): sample rate of audio
+            n_fft (int): number of Fast Fourier Transforms
+            hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
+            top_db (int): loudest in decibels
             cuda (bool): use CUDA?
             progress_bar (iterable): iterable callback for progress updates or None
         """
-        self.mel = Mel(x_res=resolution, y_res=resolution)
+        self.mel = Mel(x_res=resolution,
+                       y_res=resolution,
+                       sample_rate=sample_rate,
+                       n_fft=n_fft,
+                       hop_length=hop_length,
+                       top_db=top_db)
         self.model_id = model_id
         self.ddpm = DDPMPipeline.from_pretrained(self.model_id)
         if cuda:
@@ -92,8 +105,7 @@ class AudioDiffusion:
         images = noise = torch.randn(
             (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
              self.ddpm.unet.sample_size),
-            generator=generator
-        )
+            generator=generator)
 
         if audio_file is not None or raw_audio is not None:
             self.mel.load_audio(audio_file, raw_audio)
