@@ -119,7 +119,7 @@ class AudioDiffusion:
             if start_step > 0:
                 images[0, 0] = scheduler.add_noise(
                     torch.tensor(input_image[np.newaxis, np.newaxis, :]),
-                    noise, steps - start_step)
+                    noise, torch.tensor(steps - start_step))
 
             mask_start = int(mask_start_secs * self.mel.get_sample_rate() /
                              self.mel.hop_length)
@@ -127,7 +127,7 @@ class AudioDiffusion:
                            self.mel.hop_length)
             mask = scheduler.add_noise(
                 torch.tensor(input_image[np.newaxis, np.newaxis, :]), noise,
-                scheduler.timesteps[start_step:])
+                torch.tensor(scheduler.timesteps[start_step:]))
 
         images = images.to(self.ddpm.device)
         for step, t in enumerate(
