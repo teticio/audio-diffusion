@@ -10,7 +10,8 @@ from PIL import Image
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers import (DDPMPipeline, DDPMScheduler, UNet2DModel, LDMPipeline,
+                       DDIMScheduler, VQModel)
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -40,8 +41,16 @@ def main(args):
     )
 
     if args.from_pretrained is not None:
-        model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
+        #model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
+        pretrained = LDMPipeline.from_pretrained(args.from_pretrained)
+        vqvae = pretrained.vqvae
+        model = pretrained.unet
     else:
+        vqvae = VQModel(sample_size=args.resolution,
+                        in_channels=1,
+                        out_channels=1,
+                        latent_channels=1,
+                        layers_per_block=2)
         model = UNet2DModel(
             sample_size=args.resolution,
             in_channels=1,
@@ -65,7 +74,10 @@ def main(args):
                 "UpBlock2D",
             ),
         )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
+
+    #noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
+    #                                tensor_format="pt")
+    noise_scheduler = DDIMScheduler(num_train_timesteps=1000,
                                     tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -169,14 +181,16 @@ def main(args):
                 device=clean_images.device,
             ).long()
 
+            clean_latents = vqvae.encode(clean_images)["sample"]
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_images = noise_scheduler.add_noise(clean_images, noise,
-                                                     timesteps)
+            noisy_latents = noise_scheduler.add_noise(clean_latents, noise,
+                                                      timesteps)
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps)["sample"]
+                latents = model(noisy_latents, timesteps)["sample"]
+                noise_pred = vqvae.decode(latents)["sample"]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -205,9 +219,15 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                pipeline = DDPMPipeline(
+                #pipeline = DDPMPipeline(
+                #    unet=accelerator.unwrap_model(
+                #        ema_model.averaged_model if args.use_ema else model),
+                #    scheduler=noise_scheduler,
+                #)
+                pipeline = LDMPipeline(
                     unet=accelerator.unwrap_model(
                         ema_model.averaged_model if args.use_ema else model),
+                    vqvae=vqvae,
                     scheduler=noise_scheduler,
                 )
 

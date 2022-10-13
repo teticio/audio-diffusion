@@ -89,7 +89,7 @@ accelerate launch --config_file accelerate_local.yaml \
   train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
-  --output_dir ddpm-ema-audio-256 \
+  --output_dir latent-audio-diffusion-256 \
   --num_epochs 100 \
   --train_batch_size 2 \
   --eval_batch_size 2 \
@@ -98,7 +98,7 @@ accelerate launch --config_file accelerate_local.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no \
   --push_to_hub True \
-  --hub_model_id audio-diffusion-256 \
+  --hub_model_id latent-audio-diffusion-256 \
   --hub_token $(cat $HOME/.huggingface/token)
 ```
 
