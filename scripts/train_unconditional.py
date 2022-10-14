@@ -48,7 +48,8 @@ def main(args):
         model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
     else:
         model = UNet2DModel(
-            sample_size=args.resolution if args.vae is None else 64,
+            sample_size=args.resolution
+            if args.vae is None else args.latent_resolution,
             in_channels=1 if args.vae is None else 3,
             out_channels=1 if args.vae is None else 3,
             layers_per_block=2,
@@ -211,9 +212,8 @@ def main(args):
                     ema_model.step(model)
                 optimizer.zero_grad()
 
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
+            progress_bar.update(1)
+            global_step += 1
 
             logs = {
                 "loss": loss.detach().item(),
@@ -304,7 +304,8 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
-    parser.add_argument("--resolution", type=int, default=64)
+    parser.add_argument("--resolution", type=int, default=256)
+    parser.add_argument("--latent_resolution", type=int, default=64)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)

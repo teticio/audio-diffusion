@@ -10,3 +10,4 @@ lightning_logs
 taming
 checkpoints
 vae_model
+latent-audio-diffusion-*

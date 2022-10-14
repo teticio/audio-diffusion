@@ -3,7 +3,6 @@
 # convert_original_stable_diffusion_to_diffusers.py
 
 # TODO
-# add latent resolution as parameter
 # grayscale
 # update README
 
