@@ -48,8 +48,9 @@ def main(args):
         model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
     else:
         model = UNet2DModel(
-            in_channels=1,
-            out_channels=1,
+            sample_size=args.resolution if args.vae is None else 64,
+            in_channels=1 if args.vae is None else 3,
+            out_channels=1 if args.vae is None else 3,
             layers_per_block=2,
             block_out_channels=(128, 128, 256, 256, 512, 512),
             down_block_types=(
@@ -114,7 +115,7 @@ def main(args):
     def transforms(examples):
         if args.vae is not None:
             images = [
-                augmentations(image).convert("RGB")
+                augmentations(image.convert("RGB"))
                 for image in examples["image"]
             ]
         else:
@@ -173,6 +174,13 @@ def main(args):
         model.train()
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
+
+            if args.vae is not None:
+                vqvae.to(clean_images.device)
+                with torch.no_grad():
+                    clean_images = vqvae.encode(
+                        clean_images).latent_dist.sample()
+
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
@@ -184,11 +192,6 @@ def main(args):
                 device=clean_images.device,
             ).long()
 
-            if args.vae is not None:
-                with torch.no_grad():
-                    clean_images = vqvae.encode(
-                        clean_images).latent_dist.sample()
-
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_images = noise_scheduler.add_noise(clean_images, noise,
@@ -196,8 +199,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                images = model(noisy_images, timesteps)["sample"]
-                noise_pred = vqvae.decode(images)["sample"]
+                noise_pred = model(noisy_images, timesteps)["sample"]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -208,13 +210,6 @@ def main(args):
                 if args.use_ema:
                     ema_model.step(model)
                 optimizer.zero_grad()
-
-            if args.vae is not None:
-                with torch.no_grad():
-                    images = [
-                        image.convert('L')
-                        for image in vqvae.decode(images)["sample"]
-                    ]
 
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -239,14 +234,16 @@ def main(args):
                 if args.vae is not None:
                     pipeline = LDMPipeline(
                         unet=accelerator.unwrap_model(
-                            ema_model.averaged_model if args.use_ema else model),
+                            ema_model.averaged_model if args.use_ema else model
+                        ),
                         vqvae=vqvae,
                         scheduler=noise_scheduler,
                     )
                 else:
                     pipeline = DDPMPipeline(
                         unet=accelerator.unwrap_model(
-                            ema_model.averaged_model if args.use_ema else model),
+                            ema_model.averaged_model if args.use_ema else model
+                        ),
                         scheduler=noise_scheduler,
                     )
 

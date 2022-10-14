@@ -4,9 +4,7 @@
 
 # TODO
 # grayscale
-# add vae to train_uncond (no_grad)
 # update README
-# merge in changes to train_unconditional
 
 import os
 import argparse
