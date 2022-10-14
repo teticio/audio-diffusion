@@ -45,20 +45,23 @@ You can play around with some pretrained models on [Google Colab](https://colab.
 ---
 
 ## Generate Mel spectrogram dataset from directory of audio files
+#### Install
+```bash
+pip install .
+```
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
 
 ```bash
-python audio_to_images.py \
+python scripts/audio_to_images.py \
   --resolution 64 \
   --hop_length 1024 \
   --input_dir path-to-audio-files \
   --output_dir data-test
 ```
-
 #### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 
 ```bash
-python audio_to_images.py \
+python scripts/audio_to_images.py \
   --resolution 256 \
   --input_dir path-to-audio-files \
   --output_dir data-256 \
@@ -66,10 +69,9 @@ python audio_to_images.py \
 ```
 ## Train model
 #### Run training on local machine.
-
 ```bash
-accelerate launch --config_file accelerate_local.yaml \
-  train_unconditional.py \
+accelerate launch --config_file config/accelerate_local.yaml \
+  scripts/train_unconditional.py \
   --dataset_name data-64 \
   --resolution 64 \
   --hop_length 1024 \
@@ -81,12 +83,10 @@ accelerate launch --config_file accelerate_local.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
-
 #### Run training on local machine with `batch_size` of 2 and `gradient_accumulation_steps` 8 to compensate, so that 256x256 resolution model fits on commercial grade GPU and push to hub.
-
 ```bash
-accelerate launch --config_file accelerate_local.yaml \
-  train_unconditional.py \
+accelerate launch --config_file config/accelerate_local.yaml \
+  scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
   --output_dir latent-audio-diffusion-256 \
@@ -101,12 +101,10 @@ accelerate launch --config_file accelerate_local.yaml \
   --hub_model_id latent-audio-diffusion-256 \
   --hub_token $(cat $HOME/.huggingface/token)
 ```
-
 #### Run training on SageMaker.
-
 ```bash
-accelerate launch --config_file accelerate_sagemaker.yaml \
-  strain_unconditional.py \
+accelerate launch --config_file config/accelerate_sagemaker.yaml \
+  scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
   --output_dir ddpm-ema-audio-256 \

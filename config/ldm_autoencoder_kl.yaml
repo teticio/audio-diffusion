@@ -27,6 +27,5 @@ model:
 lightning:
   trainer:
     benchmark: True
-    accumulate_grad_batches: 24
     accelerator: gpu
     devices: 1

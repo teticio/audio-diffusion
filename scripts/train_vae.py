@@ -4,7 +4,8 @@
 
 # TODO
 # grayscale
-# convert to huggingface / train huggingface
+# add vae to train_uncond (no_grad)
+# update README
 
 import os
 import argparse
@@ -15,21 +16,26 @@ import numpy as np
 from PIL import Image
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
-from datasets import load_dataset
 from librosa.util import normalize
 from ldm.util import instantiate_from_config
 from pytorch_lightning.trainer import Trainer
 from torch.utils.data import DataLoader, Dataset
+from datasets import load_from_disk, load_dataset
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
+from pytorch_lightning.utilities.distributed import rank_zero_only
 
 from audiodiffusion.mel import Mel
+from audiodiffusion.utils import convert_ldm_to_hf_vae
 
 
 class AudioDiffusion(Dataset):
 
     def __init__(self, model_id):
         super().__init__()
-        self.hf_dataset = load_dataset(model_id)['train']
+        if os.path.exists(model_id):
+            self.hf_dataset = load_from_disk(model_id)['train']
+        else:
+            self.hf_dataset = load_dataset(model_id)['train']
 
     def __len__(self):
         return len(self.hf_dataset)
@@ -65,11 +71,8 @@ class ImageLogger(Callback):
                        hop_length=hop_length)
         self.every = every
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch,
-                           batch_idx):
-        if (batch_idx + 1) % self.every != 0:
-            return
-
+    @rank_zero_only
+    def log_images_and_audios(self, pl_module, batch):
         pl_module.eval()
         with torch.no_grad():
             images = pl_module.log_images(batch, split='train')
@@ -96,27 +99,69 @@ class ImageLogger(Callback):
                     global_step=pl_module.global_step,
                     sample_rate=self.mel.get_sample_rate())
 
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch,
+                           batch_idx):
+        if (batch_idx + 1) % self.every != 0:
+            return
+        self.log_images_and_audios(pl_module, batch)
+
+
+class HFModelCheckpoint(ModelCheckpoint):
+
+    def __init__(self, ldm_config, hf_checkpoint='vae_model', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ldm_config = ldm_config
+        self.hf_checkpoint = hf_checkpoint
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        super().on_train_epoch_end(trainer, pl_module)
+        ldm_checkpoint = self.format_checkpoint_name(
+            {'epoch': trainer.current_epoch})
+        convert_ldm_to_hf_vae(ldm_checkpoint, self.ldm_config,
+                              self.hf_checkpoint)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train VAE using ldm.")
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("-d", "--dataset_name", type=str, default=None)
+    parser.add_argument("-b", "--batch_size", type=int, default=1)
+    parser.add_argument("-c",
+                        "--ldm_config_file",
+                        type=str,
+                        default="config/ldm_autoencoder_kl.yaml")
+    parser.add_argument("--ldm_checkpoint_dir",
+                        type=str,
+                        default="checkpoints")
+    parser.add_argument("--hf_checkpoint_dir", type=str, default="vae_model")
+    parser.add_argument("-r",
+                        "--resume_from_checkpoint",
+                        type=str,
+                        default=None)
+    parser.add_argument("-g",
+                        "--gradient_accumulation_steps",
+                        type=int,
+                        default=1)
     args = parser.parse_args()
 
-    config = OmegaConf.load('ldm_autoencoder_kl.yaml')
+    config = OmegaConf.load(args.ldm_config_file)
     lightning_config = config.pop("lightning", OmegaConf.create())
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
+    trainer_config.accumulate_grad_batches = args.gradient_accumulation_steps
     trainer_opt = argparse.Namespace(**trainer_config)
-    trainer = Trainer.from_argparse_args(trainer_opt,
-                                         callbacks=[
-                                             ImageLogger(),
-                                             ModelCheckpoint(
-                                                 dirpath='checkpoints',
-                                                 filename='{epoch:06}',
-                                                 verbose=True,
-                                                 save_last=True)
-                                         ])
+    trainer = Trainer.from_argparse_args(
+        trainer_opt,
+        resume_from_checkpoint=args.resume_from_checkpoint,
+        callbacks=[
+            ImageLogger(),
+            HFModelCheckpoint(ldm_config=config,
+                              hf_checkpoint=args.hf_checkpoint_dir,
+                              dirpath=args.ldm_checkpoint_dir,
+                              filename='{epoch:06}',
+                              verbose=True,
+                              save_last=True)
+        ])
     model = instantiate_from_config(config.model)
     model.learning_rate = config.model.base_learning_rate
-    data = AudioDiffusionDataModule('teticio/audio-diffusion-256',
+    data = AudioDiffusionDataModule(args.dataset_name,
                                     batch_size=args.batch_size)
     trainer.fit(model, data)
