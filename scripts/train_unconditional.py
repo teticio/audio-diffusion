@@ -11,7 +11,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
 from diffusers import (DDPMPipeline, DDPMScheduler, UNet2DModel, LDMPipeline,
-                       DDIMScheduler, VQModel)
+                       DDIMScheduler, AutoencoderKL)
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -46,11 +46,11 @@ def main(args):
         vqvae = pretrained.vqvae
         model = pretrained.unet
     else:
-        vqvae = VQModel(sample_size=args.resolution,
-                        in_channels=1,
-                        out_channels=1,
-                        latent_channels=1,
-                        layers_per_block=2)
+        vqvae = AutoencoderKL(sample_size=args.resolution,
+                              in_channels=1,
+                              out_channels=1,
+                              latent_channels=1,
+                              layers_per_block=2)
         model = UNet2DModel(
             sample_size=args.resolution,
             in_channels=1,

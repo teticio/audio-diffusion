@@ -152,7 +152,7 @@ if __name__ == "__main__":
         trainer_opt,
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
-            ImageLogger(),
+            ImageLogger(every=10),
             HFModelCheckpoint(ldm_config=config,
                               hf_checkpoint=args.hf_checkpoint_dir,
                               dirpath=args.ldm_checkpoint_dir,
