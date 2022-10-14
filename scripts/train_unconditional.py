@@ -35,24 +35,19 @@ def main(args):
     output_dir = os.environ.get("SM_MODEL_DIR", None) or args.output_dir
     logging_dir = os.path.join(output_dir, args.logging_dir)
     accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
     )
 
+    if args.vae is not None:
+        vqvae = AutoencoderKL.from_pretrained(args.vae)
+
     if args.from_pretrained is not None:
-        #model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
-        pretrained = LDMPipeline.from_pretrained(args.from_pretrained)
-        vqvae = pretrained.vqvae
-        model = pretrained.unet
+        model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
     else:
-        vqvae = AutoencoderKL(sample_size=args.resolution,
-                              in_channels=1,
-                              out_channels=1,
-                              latent_channels=1,
-                              layers_per_block=2)
         model = UNet2DModel(
-            sample_size=args.resolution,
             in_channels=1,
             out_channels=1,
             layers_per_block=2,
@@ -75,10 +70,12 @@ def main(args):
             ),
         )
 
-    #noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
-    #                                tensor_format="pt")
-    noise_scheduler = DDIMScheduler(num_train_timesteps=1000,
-                                    tensor_format="pt")
+    if args.scheduler == "ddpm":
+        noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
+                                        tensor_format="pt")
+    else:
+        noise_scheduler = DDIMScheduler(num_train_timesteps=1000,
+                                        tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -115,7 +112,13 @@ def main(args):
         )
 
     def transforms(examples):
-        images = [augmentations(image) for image in examples["image"]]
+        if args.vae is not None:
+            images = [
+                augmentations(image).convert("RGB")
+                for image in examples["image"]
+            ]
+        else:
+            images = [augmentations(image) for image in examples["image"]]
         return {"input": images}
 
     dataset.set_transform(transforms)
@@ -181,27 +184,42 @@ def main(args):
                 device=clean_images.device,
             ).long()
 
-            clean_latents = vqvae.encode(clean_images)["sample"]
+            if args.vae is not None:
+                with torch.no_grad():
+                    clean_images = vqvae.encode(
+                        clean_images).latent_dist.sample()
+
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(clean_latents, noise,
-                                                      timesteps)
+            noisy_images = noise_scheduler.add_noise(clean_images, noise,
+                                                     timesteps)
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                latents = model(noisy_latents, timesteps)["sample"]
-                noise_pred = vqvae.decode(latents)["sample"]
+                images = model(noisy_images, timesteps)["sample"]
+                noise_pred = vqvae.decode(images)["sample"]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
-                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 if args.use_ema:
                     ema_model.step(model)
                 optimizer.zero_grad()
 
-            progress_bar.update(1)
+            if args.vae is not None:
+                with torch.no_grad():
+                    images = [
+                        image.convert('L')
+                        for image in vqvae.decode(images)["sample"]
+                    ]
+
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+
             logs = {
                 "loss": loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0],
@@ -211,7 +229,6 @@ def main(args):
                 logs["ema_decay"] = ema_model.decay
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
-            global_step += 1
         progress_bar.close()
 
         accelerator.wait_for_everyone()
@@ -219,17 +236,19 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                #pipeline = DDPMPipeline(
-                #    unet=accelerator.unwrap_model(
-                #        ema_model.averaged_model if args.use_ema else model),
-                #    scheduler=noise_scheduler,
-                #)
-                pipeline = LDMPipeline(
-                    unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model),
-                    vqvae=vqvae,
-                    scheduler=noise_scheduler,
-                )
+                if args.vae is not None:
+                    pipeline = LDMPipeline(
+                        unet=accelerator.unwrap_model(
+                            ema_model.averaged_model if args.use_ema else model),
+                        vqvae=vqvae,
+                        scheduler=noise_scheduler,
+                    )
+                else:
+                    pipeline = DDPMPipeline(
+                        unet=accelerator.unwrap_model(
+                            ema_model.averaged_model if args.use_ema else model),
+                        scheduler=noise_scheduler,
+                    )
 
                 # save the model
                 if args.push_to_hub:
@@ -325,6 +344,14 @@ if __name__ == "__main__":
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
+    parser.add_argument("--scheduler",
+                        type=str,
+                        default="ddpm",
+                        help="ddpm or ddim")
+    parser.add_argument("--vae",
+                        type=str,
+                        default=None,
+                        help="pretrained VAE model for latent diffusion")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
