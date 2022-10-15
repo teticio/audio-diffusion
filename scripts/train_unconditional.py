@@ -73,11 +73,12 @@ def main(args):
         )
 
     if args.scheduler == "ddpm":
-        noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
-                                        tensor_format="pt")
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.num_train_steps, tensor_format="pt")
     else:
-        noise_scheduler = DDIMScheduler(num_train_timesteps=1000,
-                                        tensor_format="pt")
+        noise_scheduler = DDIMScheduler(
+            num_train_timesteps=args.num_train_steps, tensor_format="pt")
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -305,7 +306,6 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
     parser.add_argument("--resolution", type=int, default=256)
-    parser.add_argument("--latent_resolution", type=int, default=64)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
@@ -342,6 +342,8 @@ if __name__ == "__main__":
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
+    parser.add_argument("--num_train_steps", type=int, default=1000)
+    parser.add_argument("--latent_resolution", type=int, default=64)
     parser.add_argument("--scheduler",
                         type=str,
                         default="ddpm",

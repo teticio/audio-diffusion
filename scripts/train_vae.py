@@ -107,7 +107,7 @@ class ImageLogger(Callback):
 
 class HFModelCheckpoint(ModelCheckpoint):
 
-    def __init__(self, ldm_config, hf_checkpoint='vae_model', *args, **kwargs):
+    def __init__(self, ldm_config, hf_checkpoint='models/autoencoder-kl', *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ldm_config = ldm_config
         self.hf_checkpoint = hf_checkpoint
@@ -130,7 +130,7 @@ if __name__ == "__main__":
                         default="config/ldm_autoencoder_kl.yaml")
     parser.add_argument("--ldm_checkpoint_dir",
                         type=str,
-                        default="checkpoints")
+                        default="models/ldm-autoencoder-kl")
     parser.add_argument("--hf_checkpoint_dir", type=str, default="vae_model")
     parser.add_argument("-r",
                         "--resume_from_checkpoint",

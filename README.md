@@ -56,7 +56,7 @@ python scripts/audio_to_images.py \
   --resolution 64 \
   --hop_length 1024 \
   --input_dir path-to-audio-files \
-  --output_dir data-test
+  --output_dir path-to-output-data
 ```
 #### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 
@@ -64,7 +64,7 @@ python scripts/audio_to_images.py \
 python scripts/audio_to_images.py \
   --resolution 256 \
   --input_dir path-to-audio-files \
-  --output_dir data-256 \
+  --output_dir data/audio-diffusion-256 \
   --push_to_hub teticio/audio-diffusion-256
 ```
 ## Train model
@@ -72,10 +72,10 @@ python scripts/audio_to_images.py \
 ```bash
 accelerate launch --config_file config/accelerate_local.yaml \
   scripts/train_unconditional.py \
-  --dataset_name data-64 \
+  --dataset_name data/audio-diffusion-64 \
   --resolution 64 \
   --hop_length 1024 \
-  --output_dir ddpm-ema-audio-64 \
+  --output_dir models/ddpm-ema-audio-64 \
   --train_batch_size 16 \
   --num_epochs 100 \
   --gradient_accumulation_steps 1 \
@@ -89,7 +89,7 @@ accelerate launch --config_file config/accelerate_local.yaml \
   scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
-  --output_dir audio-diffusion-256 \
+  --output_dir models/audio-diffusion-256 \
   --num_epochs 100 \
   --train_batch_size 2 \
   --eval_batch_size 2 \
@@ -107,7 +107,7 @@ accelerate launch --config_file config/accelerate_sagemaker.yaml \
   scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
   --resolution 256 \
-  --output_dir ddpm-ema-audio-256 \
+  --output_dir models/ddpm-ema-audio-256 \
   --train_batch_size 16 \
   --num_epochs 100 \
   --gradient_accumulation_steps 1 \
