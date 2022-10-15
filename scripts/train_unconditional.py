@@ -231,15 +231,14 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+            if (
+                    epoch + 1
+            ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 if args.vae is not None:
-                    pipeline = LDMPipeline(
-                        unet=accelerator.unwrap_model(
-                            ema_model.averaged_model if args.use_ema else model
-                        ),
-                        vqvae=vqvae,
-                        scheduler=noise_scheduler,
-                    )
+                    pipeline = LDMPipeline(unet=accelerator.unwrap_model(
+                        ema_model.averaged_model if args.use_ema else model),
+                                           vqvae=vqvae,
+                                           scheduler=noise_scheduler)
                 else:
                     pipeline = DDPMPipeline(
                         unet=accelerator.unwrap_model(
@@ -269,6 +268,7 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     output_type="numpy",
+                    num_inference_steps=args.num_train_steps,
                 )["sample"]
 
                 # denormalize the images and save to tensorboard

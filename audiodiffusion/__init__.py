@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from tqdm.auto import tqdm
 from librosa.beat import beat_track
-from diffusers import DDPMPipeline, DDPMScheduler
+from diffusers import DiffusionPipeline
 
 from .mel import Mel
 
@@ -42,13 +42,14 @@ class AudioDiffusion:
                        hop_length=hop_length,
                        top_db=top_db)
         self.model_id = model_id
-        self.ddpm = DDPMPipeline.from_pretrained(self.model_id)
+        self.pipe = DiffusionPipeline.from_pretrained(self.model_id)
         if cuda:
-            self.ddpm.to("cuda")
+            self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
 
     def generate_spectrogram_and_audio(
         self,
+        steps: int = None,
         generator: torch.Generator = None
     ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram and convert to audio.
@@ -60,7 +61,10 @@ class AudioDiffusion:
             PIL Image: mel spectrogram
             (float, np.ndarray): sample rate and raw audio
         """
-        images = self.ddpm(output_type="numpy", generator=generator)["sample"]
+        images = self.pipe(output_type="numpy",
+                           generator=generator,
+                           num_inference_steps=self.pipe.scheduler.
+                           num_train_timesteps)["sample"]
         images = (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
         image = Image.fromarray(images[0][0])
         audio = self.mel.image_to_audio(image)
@@ -95,16 +99,17 @@ class AudioDiffusion:
             (float, np.ndarray): sample rate and raw audio
         """
 
-        # It would be better to derive a class from DDPMDiffusionPipeline
+        # It would be better to derive a class from DiffusionPipeline
         # but currently the return type ImagePipelineOutput cannot be imported.
         if steps is None:
-            steps = self.ddpm.scheduler.num_train_timesteps
-        scheduler = DDPMScheduler(num_train_timesteps=steps)
+            steps = self.pipe.scheduler.num_train_timesteps
+        # Unfortunately, the schedule is set up in the constructor.
+        scheduler = self.pipe.scheduler.__class__(num_train_timesteps=steps)
         scheduler.set_timesteps(steps)
         mask = None
         images = noise = torch.randn(
-            (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
-             self.ddpm.unet.sample_size),
+            (1, self.pipe.unet.in_channels, self.pipe.unet.sample_size,
+             self.pipe.unet.sample_size),
             generator=generator)
 
         if audio_file is not None or raw_audio is not None:
@@ -129,10 +134,10 @@ class AudioDiffusion:
                 torch.tensor(input_image[np.newaxis, np.newaxis, :]), noise,
                 torch.tensor(scheduler.timesteps[start_step:]))
 
-        images = images.to(self.ddpm.device)
+        images = images.to(self.pipe.device)
         for step, t in enumerate(
                 self.progress_bar(scheduler.timesteps[start_step:])):
-            model_output = self.ddpm.unet(images, t)['sample']
+            model_output = self.pipe.unet(images, t)['sample']
             images = scheduler.step(model_output,
                                     t,
                                     images,
