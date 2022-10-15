@@ -4,7 +4,6 @@
 
 # TODO
 # grayscale
-# update README
 
 import os
 import argparse
@@ -107,7 +106,7 @@ class ImageLogger(Callback):
 
 class HFModelCheckpoint(ModelCheckpoint):
 
-    def __init__(self, ldm_config, hf_checkpoint='models/autoencoder-kl', *args, **kwargs):
+    def __init__(self, ldm_config, hf_checkpoint, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ldm_config = ldm_config
         self.hf_checkpoint = hf_checkpoint
@@ -131,7 +130,9 @@ if __name__ == "__main__":
     parser.add_argument("--ldm_checkpoint_dir",
                         type=str,
                         default="models/ldm-autoencoder-kl")
-    parser.add_argument("--hf_checkpoint_dir", type=str, default="vae_model")
+    parser.add_argument("--hf_checkpoint_dir",
+                        type=str,
+                        default="models/autoencoder-kl")
     parser.add_argument("-r",
                         "--resume_from_checkpoint",
                         type=str,

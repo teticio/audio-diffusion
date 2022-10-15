@@ -15,7 +15,10 @@ license: gpl-3.0
 
 ---
 
-**UPDATES**: 
+**UPDATES**:
+
+15/10/2022
+Added latent audio diffusion (see below).
 
 4/10/2022
 It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
@@ -49,6 +52,7 @@ You can play around with some pretrained models on [Google Colab](https://colab.
 ```bash
 pip install .
 ```
+
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
 
 ```bash
@@ -58,8 +62,8 @@ python scripts/audio_to_images.py \
   --input_dir path-to-audio-files \
   --output_dir path-to-output-data
 ```
-#### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 
+#### Generate dataset of 256x256 Mel spectrograms and push to hub (you will need to be authenticated with `huggingface-cli login`).
 ```bash
 python scripts/audio_to_images.py \
   --resolution 256 \
@@ -67,6 +71,7 @@ python scripts/audio_to_images.py \
   --output_dir data/audio-diffusion-256 \
   --push_to_hub teticio/audio-diffusion-256
 ```
+
 ## Train model
 #### Run training on local machine.
 ```bash
@@ -83,6 +88,7 @@ accelerate launch --config_file config/accelerate_local.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
+
 #### Run training on local machine with `batch_size` of 2 and `gradient_accumulation_steps` 8 to compensate, so that 256x256 resolution model fits on commercial grade GPU and push to hub.
 ```bash
 accelerate launch --config_file config/accelerate_local.yaml \
@@ -101,6 +107,7 @@ accelerate launch --config_file config/accelerate_local.yaml \
   --hub_model_id audio-diffusion-256 \
   --hub_token $(cat $HOME/.huggingface/token)
 ```
+
 #### Run training on SageMaker.
 ```bash
 accelerate launch --config_file config/accelerate_sagemaker.yaml \
@@ -114,4 +121,22 @@ accelerate launch --config_file config/accelerate_sagemaker.yaml \
   --learning_rate 1e-4 \
   --lr_warmup_steps 500 \
   --mixed_precision no
+```
+## Latent Audio Diffusion
+Rather than denoising images directly, it is interesting to work in the "latent space" after first encoding images using an autoencoder. This has a number of advantages. Firstly, the information in the images is compressed into a latent space of a much lower dimension, so it is much faster to train denoising diffusion models and run inference with them. Secondly, as the latent space is really a array (tensor) of guassian variables with a particular mean, decoded images are invariant to guassian noise. And thirdly, similar images tend to be clustered together and interpolating between two images in latent space can produce meaningful combinations.
+
+At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality, rather like its cousin `transformers` in the early days of development. In order to train a VAE (Variational Autoencoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format.
+
+#### Train an autoencoder.
+```bash
+python scripts/train_vae.py \
+  --dataset_name teticio/audio-diffusion-256 \
+  --batch_size 2 \
+  --gradient_accumulation_steps 12
+```
+
+#### Train latent diffusion model.
+```bash
+accelerate launch ...
+  --vae models/autoencoder-kl 
 ```
