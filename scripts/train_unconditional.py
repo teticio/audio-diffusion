@@ -50,8 +50,10 @@ def main(args):
         model = UNet2DModel(
             sample_size=args.resolution
             if args.vae is None else args.latent_resolution,
-            in_channels=1 if args.vae is None else 3,
-            out_channels=1 if args.vae is None else 3,
+            in_channels=1
+            if args.vae is None else vqvae.config['latent_channels'],
+            out_channels=1
+            if args.vae is None else vqvae.config['latent_channels'],
             layers_per_block=2,
             block_out_channels=(128, 128, 256, 256, 512, 512),
             down_block_types=(
@@ -115,9 +117,9 @@ def main(args):
         )
 
     def transforms(examples):
-        if args.vae is not None:
+        if args.vae is not None and vqvae.config['in_channels'] == 3:
             images = [
-                augmentations(image.convert("RGB"))
+                augmentations(image.convert('RGB'))
                 for image in examples["image"]
             ]
         else:
@@ -182,6 +184,8 @@ def main(args):
                 with torch.no_grad():
                     clean_images = vqvae.encode(
                         clean_images).latent_dist.sample()
+                # Scale latent images to ensure approximately unit variance
+                clean_images = clean_images * 0.18215
 
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
@@ -231,9 +235,7 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if (
-                    epoch + 1
-            ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 if args.vae is not None:
                     pipeline = LDMPipeline(unet=accelerator.unwrap_model(
                         ema_model.averaged_model if args.use_ema else model),
@@ -262,14 +264,16 @@ def main(args):
                 else:
                     pipeline.save_pretrained(output_dir)
 
-                generator = torch.manual_seed(0)
+            if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+                generator = torch.manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(
-                    generator=generator,
-                    batch_size=args.eval_batch_size,
-                    output_type="numpy",
-                    num_inference_steps=args.num_train_steps,
-                )["sample"]
+                with torch.no_grad():
+                    images = pipeline(
+                        generator=generator,
+                        batch_size=args.eval_batch_size,
+                        output_type="numpy",
+                        num_inference_steps=args.num_train_steps,
+                    )["sample"]
 
                 # denormalize the images and save to tensorboard
                 images_processed = ((images *
@@ -278,7 +282,13 @@ def main(args):
                 accelerator.trackers[0].writer.add_images(
                     "test_samples", images_processed, epoch)
                 for _, image in enumerate(images_processed):
-                    audio = mel.image_to_audio(Image.fromarray(image[0]))
+                    image = Image.fromarray(image[0])
+
+                    if args.vae is not None and vqvae.config[
+                            'out_channels'] == 3:
+                        image = image.convert('L')
+
+                    audio = mel.image_to_audio(image)
                     accelerator.trackers[0].writer.add_audio(
                         f"test_audio_{_}",
                         normalize(audio),

@@ -4,6 +4,7 @@
 
 # TODO
 # grayscale
+# update generate from audio to include vae step
 
 import os
 import argparse

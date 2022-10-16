@@ -71,7 +71,7 @@ python scripts/audio_to_images.py \
   --output_dir data/audio-diffusion-256 \
   --push_to_hub teticio/audio-diffusion-256
 ```
-
+  
 ## Train model
 #### Run training on local machine.
 ```bash
@@ -123,7 +123,7 @@ accelerate launch --config_file config/accelerate_sagemaker.yaml \
   --mixed_precision no
 ```
 ## Latent Audio Diffusion
-Rather than denoising images directly, it is interesting to work in the "latent space" after first encoding images using an autoencoder. This has a number of advantages. Firstly, the information in the images is compressed into a latent space of a much lower dimension, so it is much faster to train denoising diffusion models and run inference with them. Secondly, as the latent space is really a array (tensor) of guassian variables with a particular mean, the decoder is invariant to guassian noise. And thirdly, similar images tend to be clustered together and interpolating between two images in latent space can produce meaningful combinations.
+Rather than denoising images directly, it is interesting to work in the "latent space" after first encoding images using an autoencoder. This has a number of advantages. Firstly, the information in the images is compressed into a latent space of a much lower dimension, so it is much faster to train denoising diffusion models and run inference with them. Secondly, similar images tend to be clustered together and interpolating between two images in latent space can produce meaningful combinations.
 
 At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality, rather like its cousin `transformers` in the early days of development. In order to train a VAE (Variational Autoencoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format. Note that it uses a perceptual loss function for images; it would be nice to try a perceptual *audio* loss function.
 

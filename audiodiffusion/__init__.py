@@ -100,10 +100,10 @@ class AudioDiffusion:
         """
 
         # It would be better to derive a class from DiffusionPipeline
-        # but currently the return type ImagePipelineOutput cannot be imported.
+        # but currently the return type ImagePipelineOutput cannot be imported
         if steps is None:
             steps = self.pipe.scheduler.num_train_timesteps
-        # Unfortunately, the schedule is set up in the constructor.
+        # Unfortunately, the schedule is set up in the constructor
         scheduler = self.pipe.scheduler.__class__(num_train_timesteps=steps)
         scheduler.set_timesteps(steps)
         mask = None
@@ -121,15 +121,21 @@ class AudioDiffusion:
                                              input_image.width))
             input_image = ((input_image / 255) * 2 - 1)
 
+            if hasattr(self.pipe, 'vqvae'):
+                input_image = self.pipe.vqvae.encode(
+                    input_image).latent_dist.sample(generator=generator)
+                input_image = 0.18215 * input_image
+
             if start_step > 0:
                 images[0, 0] = scheduler.add_noise(
                     torch.tensor(input_image[np.newaxis, np.newaxis, :]),
                     noise, torch.tensor(steps - start_step))
 
-            mask_start = int(mask_start_secs * self.mel.get_sample_rate() /
-                             self.mel.hop_length)
-            mask_end = int(mask_end_secs * self.mel.get_sample_rate() /
-                           self.mel.hop_length)
+            pixels_per_second = (self.mel.get_sample_rate() *
+                                 self.pipe.unet.sample_size /
+                                 self.mel.hop_length / self.mel.x_res)
+            mask_start = int(mask_start_secs * pixels_per_second)
+            mask_end = int(mask_end_secs * pixels_per_second)
             mask = scheduler.add_noise(
                 torch.tensor(input_image[np.newaxis, np.newaxis, :]), noise,
                 torch.tensor(scheduler.timesteps[start_step:]))
@@ -150,11 +156,21 @@ class AudioDiffusion:
                 if mask_end > 0:
                     images[0, 0, :, -mask_end:] = mask[step, 0, :, -mask_end:]
 
+        if hasattr(self.pipe, 'vqvae'):
+            # 0.18215 was scaling factor used in training to ensure unit variance
+            # This is also currently hardcoded in diffusers pipeline
+            images = 1 / 0.18215 * images
+            images = self.pipe.vqvae.decode(images)['sample']
+
         images = (images / 2 + 0.5).clamp(0, 1)
         images = images.cpu().permute(0, 2, 3, 1).numpy()
-
         images = (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
         image = Image.fromarray(images[0][0])
+
+        if hasattr(self.pipe,
+                   'vqvae') and self.pipe.vqvae.config['out_channels'] == 3:
+            image = image.convert('L')
+
         audio = self.mel.image_to_audio(image)
         return image, (self.mel.get_sample_rate(), audio)
 
