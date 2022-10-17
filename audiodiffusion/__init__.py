@@ -43,11 +43,13 @@ class AudioDiffusion:
                        hop_length=hop_length,
                        top_db=top_db)
         self.model_id = model_id
-        try:  # a bit hacky
-            self.pipe = LatentAudioDiffusionPipeline.from_pretrained(self.model_id)
-        except:
-            self.pipe = AudioDiffusionPipeline.from_pretrained(self.model_id)
-
+        pipeline = {
+            'LatentAudioDiffusionPipeline': LatentAudioDiffusionPipeline,
+            'AudioDiffusionPipeline': AudioDiffusionPipeline
+        }.get(
+            DiffusionPipeline.get_config_dict(self.model_id)['_class_name'],
+            AudioDiffusionPipeline)
+        self.pipe = pipeline.from_pretrained(self.model_id)
         if cuda:
             self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
