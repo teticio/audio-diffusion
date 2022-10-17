@@ -1,8 +1,11 @@
 .vscode
 __pycache__
 .ipynb_checkpoints
-data*
-ddpm-ema-audio-*
+data
+models
 flagged
 build
 audiodiffusion.egg-info
+lightning_logs
+taming
+checkpoints

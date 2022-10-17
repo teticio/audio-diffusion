@@ -5,12 +5,12 @@ import os
 
 import torch
 import torch.nn.functional as F
-from PIL import Image
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers import (DiffusionPipeline, DDPMScheduler, UNet2DModel,
+                       DDIMScheduler, AutoencoderKL)
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -22,10 +22,12 @@ from torchvision.transforms import (
     Resize,
     ToTensor,
 )
+import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
 from audiodiffusion.mel import Mel
+from audiodiffusion import LatentAudioDiffusionPipeline, AudioDiffusionPipeline
 
 logger = get_logger(__name__)
 
@@ -34,18 +36,25 @@ def main(args):
     output_dir = os.environ.get("SM_MODEL_DIR", None) or args.output_dir
     logging_dir = os.path.join(output_dir, args.logging_dir)
     accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
     )
 
+    if args.vae is not None:
+        vqvae = AutoencoderKL.from_pretrained(args.vae)
+
     if args.from_pretrained is not None:
-        model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
+        model = DiffusionPipeline.from_pretrained(args.from_pretrained).unet
     else:
         model = UNet2DModel(
-            sample_size=args.resolution,
-            in_channels=1,
-            out_channels=1,
+            sample_size=args.resolution
+            if args.vae is None else args.latent_resolution,
+            in_channels=1
+            if args.vae is None else vqvae.config['latent_channels'],
+            out_channels=1
+            if args.vae is None else vqvae.config['latent_channels'],
             layers_per_block=2,
             block_out_channels=(128, 128, 256, 256, 512, 512),
             down_block_types=(
@@ -65,8 +74,14 @@ def main(args):
                 "UpBlock2D",
             ),
         )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000,
-                                    tensor_format="pt")
+
+    if args.scheduler == "ddpm":
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.num_train_steps, tensor_format="pt")
+    else:
+        noise_scheduler = DDIMScheduler(
+            num_train_timesteps=args.num_train_steps, tensor_format="pt")
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -103,7 +118,13 @@ def main(args):
         )
 
     def transforms(examples):
-        images = [augmentations(image) for image in examples["image"]]
+        if args.vae is not None and vqvae.config['in_channels'] == 3:
+            images = [
+                augmentations(image.convert('RGB'))
+                for image in examples["image"]
+            ]
+        else:
+            images = [augmentations(image) for image in examples["image"]]
         return {"input": images}
 
     dataset.set_transform(transforms)
@@ -158,6 +179,15 @@ def main(args):
         model.train()
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
+
+            if args.vae is not None:
+                vqvae.to(clean_images.device)
+                with torch.no_grad():
+                    clean_images = vqvae.encode(
+                        clean_images).latent_dist.sample()
+                # Scale latent images to ensure approximately unit variance
+                clean_images = clean_images * 0.18215
+
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
@@ -180,7 +210,8 @@ def main(args):
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
-                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 if args.use_ema:
@@ -188,6 +219,8 @@ def main(args):
                 optimizer.zero_grad()
 
             progress_bar.update(1)
+            global_step += 1
+
             logs = {
                 "loss": loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0],
@@ -197,7 +230,6 @@ def main(args):
                 logs["ema_decay"] = ema_model.decay
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
-            global_step += 1
         progress_bar.close()
 
         accelerator.wait_for_everyone()
@@ -205,11 +237,20 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model),
-                    scheduler=noise_scheduler,
-                )
+                if args.vae is not None:
+                    pipeline = LatentAudioDiffusionPipeline(
+                        unet=accelerator.unwrap_model(
+                            ema_model.averaged_model if args.use_ema else model
+                        ),
+                        vqvae=vqvae,
+                        scheduler=noise_scheduler)
+                else:
+                    pipeline = AudioDiffusionPipeline(
+                        unet=accelerator.unwrap_model(
+                            ema_model.averaged_model if args.use_ema else model
+                        ),
+                        scheduler=noise_scheduler,
+                    )
 
                 # save the model
                 if args.push_to_hub:
@@ -226,27 +267,30 @@ def main(args):
                 else:
                     pipeline.save_pretrained(output_dir)
 
-                generator = torch.manual_seed(0)
+            if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+                generator = torch.manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(
+                images, (sample_rate, audios) = pipeline(
+                    mel=mel,
                     generator=generator,
                     batch_size=args.eval_batch_size,
-                    output_type="numpy",
-                )["sample"]
+                    steps=args.num_train_steps,
+                )
 
                 # denormalize the images and save to tensorboard
-                images_processed = ((images *
-                                     255).round().astype("uint8").transpose(
-                                         0, 3, 1, 2))
+                images = np.array([
+                    np.frombuffer(image.tobytes(), dtype="uint8").reshape(
+                        (len(image.getbands()), image.height, image.width))
+                    for image in images
+                ])
                 accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed, epoch)
-                for _, image in enumerate(images_processed):
-                    audio = mel.image_to_audio(Image.fromarray(image[0]))
+                    "test_samples", images, epoch)
+                for _, audio in enumerate(audios):
                     accelerator.trackers[0].writer.add_audio(
                         f"test_audio_{_}",
                         normalize(audio),
                         epoch,
-                        sample_rate=mel.get_sample_rate(),
+                        sample_rate=sample_rate,
                     )
         accelerator.wait_for_everyone()
 
@@ -268,7 +312,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
-    parser.add_argument("--resolution", type=int, default=64)
+    parser.add_argument("--resolution", type=int, default=256)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
@@ -305,6 +349,16 @@ if __name__ == "__main__":
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
+    parser.add_argument("--num_train_steps", type=int, default=1000)
+    parser.add_argument("--latent_resolution", type=int, default=None)
+    parser.add_argument("--scheduler",
+                        type=str,
+                        default="ddpm",
+                        help="ddpm or ddim")
+    parser.add_argument("--vae",
+                        type=str,
+                        default=None,
+                        help="pretrained VAE model for latent diffusion")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))

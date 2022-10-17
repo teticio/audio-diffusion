@@ -1,15 +1,16 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Union, List
 
 import torch
 import numpy as np
 from PIL import Image
 from tqdm.auto import tqdm
 from librosa.beat import beat_track
-from diffusers import DDPMPipeline, DDPMScheduler
+from diffusers import (DiffusionPipeline, DDPMPipeline, UNet2DConditionModel,
+                       DDIMScheduler, DDPMScheduler, AutoencoderKL)
 
 from .mel import Mel
 
-VERSION = "1.1.5"
+VERSION = "1.2.0"
 
 
 class AudioDiffusion:
@@ -42,29 +43,35 @@ class AudioDiffusion:
                        hop_length=hop_length,
                        top_db=top_db)
         self.model_id = model_id
-        self.ddpm = DDPMPipeline.from_pretrained(self.model_id)
+        try:  # a bit hacky
+            self.pipe = LatentAudioDiffusionPipeline.from_pretrained(self.model_id)
+        except:
+            self.pipe = AudioDiffusionPipeline.from_pretrained(self.model_id)
+
         if cuda:
-            self.ddpm.to("cuda")
+            self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
 
     def generate_spectrogram_and_audio(
         self,
+        steps: int = None,
         generator: torch.Generator = None
     ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram and convert to audio.
 
         Args:
+            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
             generator (torch.Generator): random number generator or None
 
         Returns:
             PIL Image: mel spectrogram
             (float, np.ndarray): sample rate and raw audio
         """
-        images = self.ddpm(output_type="numpy", generator=generator)["sample"]
-        images = (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
-        image = Image.fromarray(images[0][0])
-        audio = self.mel.image_to_audio(image)
-        return image, (self.mel.get_sample_rate(), audio)
+        images, (sample_rate, audios) = self.pipe(mel=self.mel,
+                                                  batch_size=1,
+                                                  steps=steps,
+                                                  generator=generator)
+        return images[0], (sample_rate, audios[0])
 
     @torch.no_grad()
     def generate_spectrogram_and_audio_from_audio(
@@ -95,63 +102,18 @@ class AudioDiffusion:
             (float, np.ndarray): sample rate and raw audio
         """
 
-        # It would be better to derive a class from DDPMDiffusionPipeline
-        # but currently the return type ImagePipelineOutput cannot be imported.
-        if steps is None:
-            steps = self.ddpm.scheduler.num_train_timesteps
-        scheduler = DDPMScheduler(num_train_timesteps=steps)
-        scheduler.set_timesteps(steps)
-        mask = None
-        images = noise = torch.randn(
-            (1, self.ddpm.unet.in_channels, self.ddpm.unet.sample_size,
-             self.ddpm.unet.sample_size),
-            generator=generator)
-
-        if audio_file is not None or raw_audio is not None:
-            self.mel.load_audio(audio_file, raw_audio)
-            input_image = self.mel.audio_slice_to_image(slice)
-            input_image = np.frombuffer(input_image.tobytes(),
-                                        dtype="uint8").reshape(
-                                            (input_image.height,
-                                             input_image.width))
-            input_image = ((input_image / 255) * 2 - 1)
-
-            if start_step > 0:
-                images[0, 0] = scheduler.add_noise(
-                    torch.tensor(input_image[np.newaxis, np.newaxis, :]),
-                    noise, torch.tensor(steps - start_step))
-
-            mask_start = int(mask_start_secs * self.mel.get_sample_rate() /
-                             self.mel.hop_length)
-            mask_end = int(mask_end_secs * self.mel.get_sample_rate() /
-                           self.mel.hop_length)
-            mask = scheduler.add_noise(
-                torch.tensor(input_image[np.newaxis, np.newaxis, :]), noise,
-                torch.tensor(scheduler.timesteps[start_step:]))
-
-        images = images.to(self.ddpm.device)
-        for step, t in enumerate(
-                self.progress_bar(scheduler.timesteps[start_step:])):
-            model_output = self.ddpm.unet(images, t)['sample']
-            images = scheduler.step(model_output,
-                                    t,
-                                    images,
-                                    generator=generator)['prev_sample']
-
-            if mask is not None:
-                if mask_start > 0:
-                    images[0, 0, :, :mask_start] = mask[step,
-                                                        0, :, :mask_start]
-                if mask_end > 0:
-                    images[0, 0, :, -mask_end:] = mask[step, 0, :, -mask_end:]
-
-        images = (images / 2 + 0.5).clamp(0, 1)
-        images = images.cpu().permute(0, 2, 3, 1).numpy()
-
-        images = (images * 255).round().astype("uint8").transpose(0, 3, 1, 2)
-        image = Image.fromarray(images[0][0])
-        audio = self.mel.image_to_audio(image)
-        return image, (self.mel.get_sample_rate(), audio)
+        images, (sample_rate,
+                 audios) = self.pipe(mel=self.mel,
+                                     batch_size=1,
+                                     audio_file=audio_file,
+                                     raw_audio=raw_audio,
+                                     slice=slice,
+                                     start_step=start_step,
+                                     steps=steps,
+                                     generator=generator,
+                                     mask_start_secs=mask_start_secs,
+                                     mask_end_secs=mask_end_secs)
+        return images[0], (sample_rate, audios[0])
 
     @staticmethod
     def loop_it(audio: np.ndarray,
@@ -172,3 +134,129 @@ class AudioDiffusion:
             if len(beats) > beats_in_bar:
                 return np.tile(audio[beats[0]:beats[beats_in_bar]], loops)
         return None
+
+
+class AudioDiffusionPipeline(DiffusionPipeline):
+
+    def __init__(self, unet: UNet2DConditionModel,
+                 scheduler: Union[DDIMScheduler, DDPMScheduler]):
+        super().__init__()
+        self.register_modules(unet=unet, scheduler=scheduler)
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        mel: Mel,
+        batch_size: int = 1,
+        audio_file: str = None,
+        raw_audio: np.ndarray = None,
+        slice: int = 0,
+        start_step: int = 0,
+        steps: int = None,
+        generator: torch.Generator = None,
+        mask_start_secs: float = 0,
+        mask_end_secs: float = 0
+    ) -> Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]]:
+        """Generate random mel spectrogram from audio input and convert to audio.
+
+        Args:
+            mel (Mel): instance of Mel class to perform image <-> audio
+            batch_size (int): number of samples to generate
+            audio_file (str): must be a file on disk due to Librosa limitation or
+            raw_audio (np.ndarray): audio as numpy array
+            slice (int): slice number of audio to convert
+            start_step (int): step to start from
+            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
+            generator (torch.Generator): random number generator or None
+            mask_start_secs (float): number of seconds of audio to mask (not generate) at start
+            mask_end_secs (float): number of seconds of audio to mask (not generate) at end
+
+        Returns:
+            List[PIL Image]: mel spectrograms
+            (float, List[np.ndarray]): sample rate and raw audios
+        """
+
+        if steps is None:
+            steps = self.scheduler.num_train_timesteps
+        # Unfortunately, the schedule is set up in the constructor
+        scheduler = self.scheduler.__class__(num_train_timesteps=steps)
+        scheduler.set_timesteps(steps)
+        mask = None
+        images = noise = torch.randn(
+            (batch_size, self.unet.in_channels, self.unet.sample_size,
+             self.unet.sample_size),
+            generator=generator)
+
+        if audio_file is not None or raw_audio is not None:
+            mel.load_audio(audio_file, raw_audio)
+            input_image = mel.audio_slice_to_image(slice)
+            input_image = np.frombuffer(input_image.tobytes(),
+                                        dtype="uint8").reshape(
+                                            (input_image.height,
+                                             input_image.width))
+            input_image = ((input_image / 255) * 2 - 1)
+            input_images = np.tile(input_image, (batch_size, 1, 1, 1))
+
+            if hasattr(self, 'vqvae'):
+                input_images = self.vqvae.encode(
+                    input_images).latent_dist.sample(generator=generator)
+                input_images = 0.18215 * input_images
+
+            if start_step > 0:
+                images[0, 0] = scheduler.add_noise(
+                    torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
+                    noise, torch.tensor(steps - start_step))
+
+            pixels_per_second = (mel.get_sample_rate() *
+                                 self.unet.sample_size / mel.hop_length /
+                                 mel.x_res)
+            mask_start = int(mask_start_secs * pixels_per_second)
+            mask_end = int(mask_end_secs * pixels_per_second)
+            mask = scheduler.add_noise(
+                torch.tensor(input_images[:, np.newaxis, :]), noise,
+                torch.tensor(scheduler.timesteps[start_step:]))
+
+        images = images.to(self.device)
+        for step, t in enumerate(
+                self.progress_bar(scheduler.timesteps[start_step:])):
+            model_output = self.unet(images, t)['sample']
+            images = scheduler.step(model_output,
+                                    t,
+                                    images,
+                                    generator=generator)['prev_sample']
+
+            if mask is not None:
+                if mask_start > 0:
+                    images[:, :, :, :mask_start] = mask[
+                        step, :, :, :, :mask_start]
+                if mask_end > 0:
+                    images[:, :, :, -mask_end:] = mask[step, :, :, :,
+                                                       -mask_end:]
+
+        if hasattr(self, 'vqvae'):
+            # 0.18215 was scaling factor used in training to ensure unit variance
+            images = 1 / 0.18215 * images
+            images = self.vqvae.decode(images)['sample']
+
+        images = (images / 2 + 0.5).clamp(0, 1)
+        images = images.cpu().permute(0, 2, 3, 1).numpy()
+        images = (images * 255).round().astype("uint8")
+        images = list(
+            map(lambda _: Image.fromarray(_[:, :, 0]), images) if images.
+            shape[3] == 1 else map(
+                lambda _: Image.fromarray(_, mode='RGB').convert('L'), images))
+
+        audios = list(map(lambda _: mel.image_to_audio(_), images))
+        return images, (mel.get_sample_rate(), audios)
+
+
+class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
+
+    def __init__(self, unet: UNet2DConditionModel,
+                 scheduler: Union[DDIMScheduler,
+                                  DDPMScheduler], vqvae: AutoencoderKL):
+        super().__init__(unet=unet, scheduler=scheduler)
+        self.register_modules(vqvae=vqvae)
+
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
