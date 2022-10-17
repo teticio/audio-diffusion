@@ -18,7 +18,7 @@ license: gpl-3.0
 **UPDATES**:
 
 15/10/2022
-Added latent audio diffusion (see below).
+Added latent audio diffusion (see below). Also added the possibility to train a model to use DDIM ([Denoising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)) by setting `--scheduler ddim`. These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
 
 4/10/2022
 It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
@@ -138,5 +138,6 @@ python scripts/train_vae.py \
 #### Train latent diffusion model.
 ```bash
 accelerate launch ...
-  --vae models/autoencoder-kl 
+  --vae models/autoencoder-kl
+  --latent_resoultion 32
 ```

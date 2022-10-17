@@ -1,10 +1,8 @@
 # pip install -e git+https://github.com/CompVis/stable-diffusion.git@master
 # pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
-# convert_original_stable_diffusion_to_diffusers.py
 
 # TODO
 # grayscale
-# update generate from audio to include vae step
 
 import os
 import argparse

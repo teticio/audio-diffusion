@@ -5,12 +5,11 @@ import os
 
 import torch
 import torch.nn.functional as F
-from PIL import Image
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
-from diffusers import (DDPMPipeline, DDPMScheduler, UNet2DModel, LDMPipeline,
+from diffusers import (DiffusionPipeline, DDPMScheduler, UNet2DModel,
                        DDIMScheduler, AutoencoderKL)
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
@@ -23,10 +22,12 @@ from torchvision.transforms import (
     Resize,
     ToTensor,
 )
+import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
 from audiodiffusion.mel import Mel
+from audiodiffusion import LatentAudioDiffusionPipeline, AudioDiffusionPipeline
 
 logger = get_logger(__name__)
 
@@ -45,7 +46,7 @@ def main(args):
         vqvae = AutoencoderKL.from_pretrained(args.vae)
 
     if args.from_pretrained is not None:
-        model = DDPMPipeline.from_pretrained(args.from_pretrained).unet
+        model = DiffusionPipeline.from_pretrained(args.from_pretrained).unet
     else:
         model = UNet2DModel(
             sample_size=args.resolution
@@ -237,12 +238,14 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 if args.vae is not None:
-                    pipeline = LDMPipeline(unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model),
-                                           vqvae=vqvae,
-                                           scheduler=noise_scheduler)
+                    pipeline = LatentAudioDiffusionPipeline(
+                        unet=accelerator.unwrap_model(
+                            ema_model.averaged_model if args.use_ema else model
+                        ),
+                        vqvae=vqvae,
+                        scheduler=noise_scheduler)
                 else:
-                    pipeline = DDPMPipeline(
+                    pipeline = AudioDiffusionPipeline(
                         unet=accelerator.unwrap_model(
                             ema_model.averaged_model if args.use_ema else model
                         ),
@@ -267,33 +270,27 @@ def main(args):
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 generator = torch.manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
-                with torch.no_grad():
-                    images = pipeline(
-                        generator=generator,
-                        batch_size=args.eval_batch_size,
-                        output_type="numpy",
-                        num_inference_steps=args.num_train_steps,
-                    )["sample"]
+                images, (sample_rate, audios) = pipeline(
+                    mel=mel,
+                    generator=generator,
+                    batch_size=args.eval_batch_size,
+                    steps=args.num_train_steps,
+                )
 
                 # denormalize the images and save to tensorboard
-                images_processed = ((images *
-                                     255).round().astype("uint8").transpose(
-                                         0, 3, 1, 2))
+                images = np.array([
+                    np.frombuffer(image.tobytes(), dtype="uint8").reshape(
+                        (len(image.getbands()), image.height, image.width))
+                    for image in images
+                ])
                 accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed, epoch)
-                for _, image in enumerate(images_processed):
-                    image = Image.fromarray(image[0])
-
-                    if args.vae is not None and vqvae.config[
-                            'out_channels'] == 3:
-                        image = image.convert('L')
-
-                    audio = mel.image_to_audio(image)
+                    "test_samples", images, epoch)
+                for _, audio in enumerate(audios):
                     accelerator.trackers[0].writer.add_audio(
                         f"test_audio_{_}",
                         normalize(audio),
                         epoch,
-                        sample_rate=mel.get_sample_rate(),
+                        sample_rate=sample_rate,
                     )
         accelerator.wait_for_everyone()
 
@@ -353,7 +350,7 @@ if __name__ == "__main__":
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
     parser.add_argument("--num_train_steps", type=int, default=1000)
-    parser.add_argument("--latent_resolution", type=int, default=64)
+    parser.add_argument("--latent_resolution", type=int, default=None)
     parser.add_argument("--scheduler",
                         type=str,
                         default="ddpm",
