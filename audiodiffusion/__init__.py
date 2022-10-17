@@ -75,7 +75,6 @@ class AudioDiffusion:
                                                   generator=generator)
         return images[0], (sample_rate, audios[0])
 
-    @torch.no_grad()
     def generate_spectrogram_and_audio_from_audio(
         self,
         audio_file: str = None,
