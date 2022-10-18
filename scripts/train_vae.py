@@ -3,6 +3,7 @@
 
 # TODO
 # grayscale
+# docstrings
 
 import os
 import argparse
@@ -27,8 +28,9 @@ from audiodiffusion.utils import convert_ldm_to_hf_vae
 
 class AudioDiffusion(Dataset):
 
-    def __init__(self, model_id):
+    def __init__(self, model_id, channels=3):
         super().__init__()
+        self.channels = channels
         if os.path.exists(model_id):
             self.hf_dataset = load_from_disk(model_id)['train']
         else:
@@ -38,7 +40,9 @@ class AudioDiffusion(Dataset):
         return len(self.hf_dataset)
 
     def __getitem__(self, idx):
-        image = self.hf_dataset[idx]['image'].convert('RGB')
+        image = self.hf_dataset[idx]['image']
+        if self.channels == 3:
+            image = image.convert('RGB')
         image = np.frombuffer(image.tobytes(), dtype="uint8").reshape(
             (image.height, image.width, 3))
         image = ((image / 255) * 2 - 1)
@@ -47,10 +51,10 @@ class AudioDiffusion(Dataset):
 
 class AudioDiffusionDataModule(pl.LightningDataModule):
 
-    def __init__(self, model_id, batch_size):
+    def __init__(self, model_id, batch_size, channels):
         super().__init__()
         self.batch_size = batch_size
-        self.dataset = AudioDiffusion(model_id)
+        self.dataset = AudioDiffusion(model_id=model_id, channels=channels)
         self.num_workers = 1
 
     def train_dataloader(self):
@@ -61,12 +65,13 @@ class AudioDiffusionDataModule(pl.LightningDataModule):
 
 class ImageLogger(Callback):
 
-    def __init__(self, every=1000, resolution=256, hop_length=512):
+    def __init__(self, every=1000, channels=3, resolution=256, hop_length=512):
         super().__init__()
         self.mel = Mel(x_res=resolution,
                        y_res=resolution,
                        hop_length=hop_length)
         self.every = every
+        self.channels = channels
 
     @rank_zero_only
     def log_images_and_audios(self, pl_module, batch):
@@ -89,7 +94,8 @@ class ImageLogger(Callback):
                          255).round().astype("uint8").transpose(0, 2, 3, 1)
             for _, image in enumerate(images[k]):
                 audio = self.mel.image_to_audio(
-                    Image.fromarray(image, mode='RGB').convert('L'))
+                    Image.fromarray(image, mode='RGB').convert('L') if self.
+                    channels == 3 else Image.fromarray(image[0]))
                 pl_module.logger.experiment.add_audio(
                     tag + f"/{_}",
                     normalize(audio),
@@ -140,9 +146,17 @@ if __name__ == "__main__":
                         "--gradient_accumulation_steps",
                         type=int,
                         default=1)
+    parser.add_argument("--resolution", type=int, default=256)
+    parser.add_argument("--hop_length", type=int, default=512)
     args = parser.parse_args()
 
     config = OmegaConf.load(args.ldm_config_file)
+    model = instantiate_from_config(config.model)
+    model.learning_rate = config.model.base_learning_rate
+    data = AudioDiffusionDataModule(
+        model_id=args.dataset_name,
+        batch_size=args.batch_size,
+        channels=config.model.params.ddconfig.in_channels)
     lightning_config = config.pop("lightning", OmegaConf.create())
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
     trainer_config.accumulate_grad_batches = args.gradient_accumulation_steps
@@ -151,7 +165,9 @@ if __name__ == "__main__":
         trainer_opt,
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
-            ImageLogger(),
+            ImageLogger(channels=config.model.params.ddconfig.out_ch,
+                        resolution=args.resolution,
+                        hop_length=args.hop_length),
             HFModelCheckpoint(ldm_config=config,
                               hf_checkpoint=args.hf_checkpoint_dir,
                               dirpath=args.ldm_checkpoint_dir,
@@ -159,8 +175,4 @@ if __name__ == "__main__":
                               verbose=True,
                               save_last=True)
         ])
-    model = instantiate_from_config(config.model)
-    model.learning_rate = config.model.base_learning_rate
-    data = AudioDiffusionDataModule(args.dataset_name,
-                                    batch_size=args.batch_size)
     trainer.fit(model, data)
