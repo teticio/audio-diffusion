@@ -44,7 +44,7 @@ class AudioDiffusion(Dataset):
         if self.channels == 3:
             image = image.convert('RGB')
         image = np.frombuffer(image.tobytes(), dtype="uint8").reshape(
-            (image.height, image.width, 3))
+            (image.height, image.width, self.channels))
         image = ((image / 255) * 2 - 1)
         return {'image': image}
 
