@@ -274,7 +274,6 @@ def main(args):
                     mel=mel,
                     generator=generator,
                     batch_size=args.eval_batch_size,
-                    steps=args.num_train_steps,
                 )
 
                 # denormalize the images and save to tensorboard

@@ -177,11 +177,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             (float, List[np.ndarray]): sample rate and raw audios
         """
 
-        if steps is None:
-            steps = self.scheduler.num_train_timesteps
-        # Unfortunately, the schedule is set up in the constructor
-        scheduler = self.scheduler.__class__(num_train_timesteps=steps)
-        scheduler.set_timesteps(steps)
+        if steps is not None:
+            self.scheduler.set_timesteps(steps)
         mask = None
         images = noise = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size,
@@ -204,7 +201,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 input_images = 0.18215 * input_images
 
             if start_step > 0:
-                images[0, 0] = scheduler.add_noise(
+                images[0, 0] = self.scheduler.add_noise(
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
                     noise, torch.tensor(steps - start_step))
 
@@ -213,18 +210,18 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                                  mel.x_res)
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
-            mask = scheduler.add_noise(
+            mask = self.scheduler.add_noise(
                 torch.tensor(input_images[:, np.newaxis, :]), noise,
-                torch.tensor(scheduler.timesteps[start_step:]))
+                torch.tensor(self.scheduler.timesteps[start_step:]))
 
         images = images.to(self.device)
         for step, t in enumerate(
-                self.progress_bar(scheduler.timesteps[start_step:])):
+                self.progress_bar(self.scheduler.timesteps[start_step:])):
             model_output = self.unet(images, t)['sample']
-            images = scheduler.step(model_output,
-                                    t,
-                                    images,
-                                    generator=generator)['prev_sample']
+            images = self.scheduler.step(model_output,
+                                         t,
+                                         images,
+                                         generator=generator)['prev_sample']
 
             if mask is not None:
                 if mask_start > 0:
