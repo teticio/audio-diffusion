@@ -129,7 +129,7 @@ At the time of writing, the Hugging Face `diffusers` library is geared towards i
 
 #### Install dependencies to train with Stable Diffusion
 ```
-pip install omegaconf
+pip install omegaconf pytorch_lightning
 pip install -e git+https://github.com/CompVis/stable-diffusion.git@main#egg=latent-diffusion
 pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
 ```
