@@ -1,10 +1,6 @@
 # pip install -e git+https://github.com/CompVis/stable-diffusion.git@master
 # pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
 
-# TODO
-# grayscale
-# docstrings
-
 import os
 import argparse
 
@@ -117,9 +113,9 @@ class HFModelCheckpoint(ModelCheckpoint):
         self.hf_checkpoint = hf_checkpoint
 
     def on_train_epoch_end(self, trainer, pl_module):
+        ldm_checkpoint = self._get_metric_interpolated_filepath_name(
+            {'epoch': trainer.current_epoch}, trainer)
         super().on_train_epoch_end(trainer, pl_module)
-        ldm_checkpoint = self.format_checkpoint_name(
-            {'epoch': trainer.current_epoch})
         convert_ldm_to_hf_vae(ldm_checkpoint, self.ldm_config,
                               self.hf_checkpoint)
 
@@ -148,6 +144,7 @@ if __name__ == "__main__":
                         default=1)
     parser.add_argument("--resolution", type=int, default=256)
     parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--save_images_batches", type=int, default=1000)
     args = parser.parse_args()
 
     config = OmegaConf.load(args.ldm_config_file)
@@ -165,7 +162,8 @@ if __name__ == "__main__":
         trainer_opt,
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
-            ImageLogger(channels=config.model.params.ddconfig.out_ch,
+            ImageLogger(every=args.save_images_batches,
+                        channels=config.model.params.ddconfig.out_ch,
                         resolution=args.resolution,
                         hop_length=args.hop_length),
             HFModelCheckpoint(ldm_config=config,
