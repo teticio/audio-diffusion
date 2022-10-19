@@ -26,6 +26,9 @@ import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
+import sys
+sys.path.append('.')
+sys.path.append('..')
 from audiodiffusion.mel import Mel
 from audiodiffusion import LatentAudioDiffusionPipeline, AudioDiffusionPipeline
 
@@ -41,6 +44,18 @@ def main(args):
         log_with="tensorboard",
         logging_dir=logging_dir,
     )
+
+    # Handle the resolutions.
+    try:
+        args.resolution = (int(args.resolution), int(args.resolution))
+    except:
+        try :
+            args.resolution = tuple(int(x) for x in args.resolution.split(","))
+            if len(args.resolution) != 2:
+                raise ValueError("Resolution must be a tuple of two integers or a single integer.")
+        except:
+            raise ValueError("Resolution must be a tuple of two integers or a single integer.")
+    assert isinstance(args.resolution, tuple)
 
     if args.vae is not None:
         vqvae = AutoencoderKL.from_pretrained(args.vae)
@@ -156,9 +171,9 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
-    mel = Mel(x_res=args.resolution,
-              y_res=args.resolution,
-              hop_length=args.hop_length)
+    mel = Mel(x_res=args.resolution[0],
+            y_res=args.resolution[1],
+            hop_length=args.hop_length)
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -311,7 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
-    parser.add_argument("--resolution", type=int, default=256)
+    parser.add_argument("--resolution", type=str, default="256")
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
