@@ -127,6 +127,13 @@ Rather than denoising images directly, it is interesting to work in the "latent 
 
 At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality, rather like its cousin `transformers` in the early days of development. In order to train a VAE (Variational Autoencoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format. Note that it uses a perceptual loss function for images; it would be nice to try a perceptual *audio* loss function.
 
+#### Install dependencies to train with Stable Diffusion
+```
+pip install omegaconf
+pip install -e git+https://github.com/CompVis/stable-diffusion.git@main#egg=latent-diffusion
+pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
+```
+
 #### Train an autoencoder.
 ```bash
 python scripts/train_vae.py \
@@ -138,6 +145,7 @@ python scripts/train_vae.py \
 #### Train latent diffusion model.
 ```bash
 accelerate launch ...
+  ...
   --vae models/autoencoder-kl
   --latent_resoultion 32
 ```
