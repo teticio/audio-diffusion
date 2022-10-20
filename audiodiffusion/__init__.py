@@ -10,14 +10,13 @@ from diffusers import (DiffusionPipeline, DDPMPipeline, UNet2DConditionModel,
 
 from .mel import Mel
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 
 class AudioDiffusion:
 
     def __init__(self,
                  model_id: str = "teticio/audio-diffusion-256",
-                 resolution: int = 256,
                  sample_rate: int = 22050,
                  n_fft: int = 2048,
                  hop_length: int = 512,
@@ -28,7 +27,6 @@ class AudioDiffusion:
 
         Args:
             model_id (String): name of model (local directory or Hugging Face Hub)
-            resolution (int): size of square mel spectrogram in pixels
             sample_rate (int): sample rate of audio
             n_fft (int): number of Fast Fourier Transforms
             hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
@@ -36,12 +34,6 @@ class AudioDiffusion:
             cuda (bool): use CUDA?
             progress_bar (iterable): iterable callback for progress updates or None
         """
-        self.mel = Mel(x_res=resolution,
-                       y_res=resolution,
-                       sample_rate=sample_rate,
-                       n_fft=n_fft,
-                       hop_length=hop_length,
-                       top_db=top_db)
         self.model_id = model_id
         pipeline = {
             'LatentAudioDiffusionPipeline': LatentAudioDiffusionPipeline,
@@ -53,6 +45,18 @@ class AudioDiffusion:
         if cuda:
             self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
+
+        # For backwards compatibility
+        sample_size = (self.pipe.unet.sample_size,
+                       self.pipe.unet.sample_size) if type(
+                           self.pipe.unet.sample_size
+                       ) == int else self.pipe.unet.sample_size
+        self.mel = Mel(x_res=sample_size[1],
+                       y_res=sample_size[0],
+                       sample_rate=sample_rate,
+                       n_fft=n_fft,
+                       hop_length=hop_length,
+                       top_db=top_db)
 
     def generate_spectrogram_and_audio(
         self,
@@ -180,12 +184,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         if steps is not None:
             self.scheduler.set_timesteps(steps)
         mask = None
-        # For backwards compatibility
-        sample_size = (self.unet.sample_size, self.unet.sample_size) if type(
-            self.unet.sample_size) == int else self.unet.sample_size
-        images = noise = torch.randn((batch_size, self.unet.in_channels) +
-                                     sample_size,
-                                     generator=generator)
+        images = noise = torch.randn(
+            (batch_size, self.unet.in_channels, mel.y_res, mel.x_res),
+            generator=generator)
 
         if audio_file is not None or raw_audio is not None:
             mel.load_audio(audio_file, raw_audio)
@@ -207,8 +208,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
                     noise, torch.tensor(steps - start_step))
 
-            pixels_per_second = (mel.get_sample_rate() * sample_size[1] /
-                                 mel.hop_length / mel.x_res)
+            pixels_per_second = (mel.get_sample_rate() / mel.hop_length)
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(
