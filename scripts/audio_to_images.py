@@ -16,9 +16,9 @@ logger = logging.getLogger('audio_to_images')
 
 
 def main(args):
-    mel = Mel(x_res=args.resolution,
-              y_res=args.resolution,
-              hop_length=args.hop_length)
+    mel = Mel(x_res=args.resolution[0],
+              y_res=args.resolution[1],
+              hop_length=args.hop_length)   
     os.makedirs(args.output_dir, exist_ok=True)
     audio_files = [
         os.path.join(root, file) for root, _, files in os.walk(args.input_dir)
@@ -35,8 +35,8 @@ def main(args):
                 continue
             for slice in range(mel.get_number_of_slices()):
                 image = mel.audio_slice_to_image(slice)
-                assert (image.width == args.resolution
-                        and image.height == args.resolution)
+                assert (image.width == args.resolution[0] and image.height
+                        == args.resolution[1]), "Wrong resolution"
                 # skip completely silent slices
                 if all(np.frombuffer(image.tobytes(), dtype=np.uint8) == 255):
                     logger.warn('File %s slice %d is completely silent',
@@ -52,6 +52,8 @@ def main(args):
                     "audio_file": audio_file,
                     "slice": slice,
                 }])
+    except Exception as e:
+        print(e)
     finally:
         if len(examples) == 0:
             logger.warn('No valid audio files were found.')
@@ -76,12 +78,30 @@ if __name__ == "__main__":
         "Create dataset of Mel spectrograms from directory of audio files.")
     parser.add_argument("--input_dir", type=str)
     parser.add_argument("--output_dir", type=str, default="data")
-    parser.add_argument("--resolution", type=int, default=256)
+    parser.add_argument("--resolution",
+                        type=str,
+                        default="256",
+                        help="Either square resolution or width,height.")
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--push_to_hub", type=str, default=None)
     args = parser.parse_args()
+
     if args.input_dir is None:
         raise ValueError(
-            "You must specify an input directory for the audio files."
-        )    
+            "You must specify an input directory for the audio files.")
+
+    # Handle the resolutions.
+    try:
+        args.resolution = (int(args.resolution), int(args.resolution))
+    except ValueError:
+        try:
+            args.resolution = tuple(int(x) for x in args.resolution.split(","))
+            if len(args.resolution) != 2:
+                raise ValueError
+        except ValueError:
+            raise ValueError(
+                "Resolution must be a tuple of two integers or a single integer."
+            )
+    assert isinstance(args.resolution, tuple)
+
     main(args)

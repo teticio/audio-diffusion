@@ -57,7 +57,7 @@ pip install .
 
 ```bash
 python scripts/audio_to_images.py \
-  --resolution 64 \
+  --resolution 64,64 \
   --hop_length 1024 \
   --input_dir path-to-audio-files \
   --output_dir path-to-output-data
@@ -78,7 +78,6 @@ python scripts/audio_to_images.py \
 accelerate launch --config_file config/accelerate_local.yaml \
   scripts/train_unconditional.py \
   --dataset_name data/audio-diffusion-64 \
-  --resolution 64 \
   --hop_length 1024 \
   --output_dir models/ddpm-ema-audio-64 \
   --train_batch_size 16 \
@@ -94,7 +93,6 @@ accelerate launch --config_file config/accelerate_local.yaml \
 accelerate launch --config_file config/accelerate_local.yaml \
   scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
-  --resolution 256 \
   --output_dir models/audio-diffusion-256 \
   --num_epochs 100 \
   --train_batch_size 2 \
@@ -113,7 +111,6 @@ accelerate launch --config_file config/accelerate_local.yaml \
 accelerate launch --config_file config/accelerate_sagemaker.yaml \
   scripts/train_unconditional.py \
   --dataset_name teticio/audio-diffusion-256 \
-  --resolution 256 \
   --output_dir models/ddpm-ema-audio-256 \
   --train_batch_size 16 \
   --num_epochs 100 \
@@ -147,5 +144,4 @@ python scripts/train_vae.py \
 accelerate launch ...
   ...
   --vae models/autoencoder-kl
-  --latent_resoultion 32
 ```

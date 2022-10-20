@@ -180,10 +180,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         if steps is not None:
             self.scheduler.set_timesteps(steps)
         mask = None
-        images = noise = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size[0],
-             self.unet.sample_size[1]),
-            generator=generator)
+        # For backwards compatibility
+        sample_size = (self.unet.sample_size, self.unet.sample_size) if type(
+            self.unet.sample_size) == int else self.unet.sample_size
+        images = noise = torch.randn((batch_size, self.unet.in_channels) +
+                                     sample_size,
+                                     generator=generator)
 
         if audio_file is not None or raw_audio is not None:
             mel.load_audio(audio_file, raw_audio)
@@ -205,9 +207,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
                     noise, torch.tensor(steps - start_step))
 
-            pixels_per_second = (mel.get_sample_rate() *
-                                 mel.y_res / mel.hop_length /
-                                 mel.x_res)
+            pixels_per_second = (mel.get_sample_rate() * sample_size[1] /
+                                 mel.hop_length / mel.x_res)
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(

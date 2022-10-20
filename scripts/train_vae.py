@@ -58,13 +58,10 @@ class AudioDiffusionDataModule(pl.LightningDataModule):
 
 class ImageLogger(Callback):
 
-    def __init__(self, every=1000, channels=3, resolution=256, hop_length=512):
+    def __init__(self, every=1000, hop_length=512):
         super().__init__()
-        self.mel = Mel(x_res=resolution,
-                       y_res=resolution,
-                       hop_length=hop_length)
         self.every = every
-        self.channels = channels
+        self.hop_length = hop_length
 
     @rank_zero_only
     def log_images_and_audios(self, pl_module, batch):
@@ -72,6 +69,12 @@ class ImageLogger(Callback):
         with torch.no_grad():
             images = pl_module.log_images(batch, split='train')
         pl_module.train()
+
+        image_shape = next(iter(images.values())).shape
+        channels = image_shape[1]
+        mel = Mel(x_res=image_shape[2],
+                  y_res=image_shape[3],
+                  hop_length=self.hop_length)
 
         for k in images:
             images[k] = images[k].detach().cpu()
@@ -86,14 +89,14 @@ class ImageLogger(Callback):
             images[k] = (images[k].numpy() *
                          255).round().astype("uint8").transpose(0, 2, 3, 1)
             for _, image in enumerate(images[k]):
-                audio = self.mel.image_to_audio(
-                    Image.fromarray(image, mode='RGB').convert('L') if self.
-                    channels == 3 else Image.fromarray(image[0]))
+                audio = mel.image_to_audio(
+                    Image.fromarray(image, mode='RGB').convert('L')
+                    if channels == 3 else Image.fromarray(image[0]))
                 pl_module.logger.experiment.add_audio(
                     tag + f"/{_}",
                     normalize(audio),
                     global_step=pl_module.global_step,
-                    sample_rate=self.mel.get_sample_rate())
+                    sample_rate=mel.get_sample_rate())
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch,
                            batch_idx):
@@ -139,7 +142,6 @@ if __name__ == "__main__":
                         "--gradient_accumulation_steps",
                         type=int,
                         default=1)
-    parser.add_argument("--resolution", type=int, default=256)
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--save_images_batches", type=int, default=1000)
     args = parser.parse_args()
@@ -160,8 +162,6 @@ if __name__ == "__main__":
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
             ImageLogger(every=args.save_images_batches,
-                        channels=config.model.params.ddconfig.out_ch,
-                        resolution=args.resolution,
                         hop_length=args.hop_length),
             HFModelCheckpoint(ldm_config=config,
                               hf_checkpoint=args.hf_checkpoint_dir,

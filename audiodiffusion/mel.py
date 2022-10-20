@@ -106,7 +106,7 @@ class Mel:
         log_S = librosa.power_to_db(S, ref=np.max, top_db=self.top_db)
         bytedata = (((log_S + self.top_db) * 255 / self.top_db).clip(0, 255) +
                     0.5).astype(np.uint8)
-        image = Image.frombytes("L", log_S.shape, bytedata.tobytes())
+        image = Image.fromarray(bytedata)
         return image
 
     def image_to_audio(self, image: Image.Image) -> np.ndarray:

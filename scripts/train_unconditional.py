@@ -26,9 +26,6 @@ import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
-import sys
-sys.path.append('.')
-sys.path.append('..')
 from audiodiffusion.mel import Mel
 from audiodiffusion import LatentAudioDiffusionPipeline, AudioDiffusionPipeline
 
@@ -45,31 +42,68 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    # Handle the resolutions.
-    try:
-        args.resolution = (int(args.resolution), int(args.resolution))
-    except:
-        try :
-            args.resolution = tuple(int(x) for x in args.resolution.split(","))
-            if len(args.resolution) != 2:
-                raise ValueError("Resolution must be a tuple of two integers or a single integer.")
-        except:
-            raise ValueError("Resolution must be a tuple of two integers or a single integer.")
-    assert isinstance(args.resolution, tuple)
+    if args.dataset_name is not None:
+        if os.path.exists(args.dataset_name):
+            dataset = load_from_disk(args.dataset_name,
+                                     args.dataset_config_name)["train"]
+        else:
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+                use_auth_token=True if args.use_auth_token else None,
+                split="train",
+            )
+    else:
+        dataset = load_dataset(
+            "imagefolder",
+            data_dir=args.train_data_dir,
+            cache_dir=args.cache_dir,
+            split="train",
+        )
+    # Determine image resolution
+    resolution = dataset[0]['image'].height, dataset[0]['image'].width
 
+    augmentations = Compose([
+        ToTensor(),
+        Normalize([0.5], [0.5]),
+    ])
+
+    def transforms(examples):
+        if args.vae is not None and vqvae.config['in_channels'] == 3:
+            images = [
+                augmentations(image.convert('RGB'))
+                for image in examples["image"]
+            ]
+        else:
+            images = [augmentations(image) for image in examples["image"]]
+        return {"input": images}
+
+    dataset.set_transform(transforms)
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=args.train_batch_size, shuffle=True)
+
+    vqvae = None
     if args.vae is not None:
         vqvae = AutoencoderKL.from_pretrained(args.vae)
+        # Determine latent resolution
+        with torch.no_grad():
+            latent_resolution = vqvae.encode(
+                torch.zeros((1, 1) +
+                            resolution)).latent_dist.sample().shape[2:]
 
     if args.from_pretrained is not None:
-        model = DiffusionPipeline.from_pretrained(args.from_pretrained).unet
+        pipeline = DiffusionPipeline.from_pretrained(args.from_pretrained)
+        model = pipeline.unet
+        if hasattr(pipeline, 'vqvae'):
+            vqvae = AutoencoderKL.from_pretrained(args.vae)
     else:
         model = UNet2DModel(
-            sample_size=args.resolution
-            if args.vae is None else args.latent_resolution,
+            sample_size=resolution if vqvae is None else latent_resolution,
             in_channels=1
-            if args.vae is None else vqvae.config['latent_channels'],
+            if vqvae is None else vqvae.config['latent_channels'],
             out_channels=1
-            if args.vae is None else vqvae.config['latent_channels'],
+            if vqvae is None else vqvae.config['latent_channels'],
             layers_per_block=2,
             block_out_channels=(128, 128, 256, 256, 512, 512),
             down_block_types=(
@@ -105,47 +139,6 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    augmentations = Compose([
-        Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
-        CenterCrop(args.resolution),
-        ToTensor(),
-        Normalize([0.5], [0.5]),
-    ])
-
-    if args.dataset_name is not None:
-        if os.path.exists(args.dataset_name):
-            dataset = load_from_disk(args.dataset_name,
-                                     args.dataset_config_name)["train"]
-        else:
-            dataset = load_dataset(
-                args.dataset_name,
-                args.dataset_config_name,
-                cache_dir=args.cache_dir,
-                use_auth_token=True if args.use_auth_token else None,
-                split="train",
-            )
-    else:
-        dataset = load_dataset(
-            "imagefolder",
-            data_dir=args.train_data_dir,
-            cache_dir=args.cache_dir,
-            split="train",
-        )
-
-    def transforms(examples):
-        if args.vae is not None and vqvae.config['in_channels'] == 3:
-            images = [
-                augmentations(image.convert('RGB'))
-                for image in examples["image"]
-            ]
-        else:
-            images = [augmentations(image) for image in examples["image"]]
-        return {"input": images}
-
-    dataset.set_transform(transforms)
-    train_dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.train_batch_size, shuffle=True)
-
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
@@ -171,9 +164,9 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
-    mel = Mel(x_res=args.resolution[0],
-            y_res=args.resolution[1],
-            hop_length=args.hop_length)
+    mel = Mel(x_res=resolution[1],
+              y_res=resolution[0],
+              hop_length=args.hop_length)
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -195,7 +188,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
 
-            if args.vae is not None:
+            if vqvae is not None:
                 vqvae.to(clean_images.device)
                 with torch.no_grad():
                     clean_images = vqvae.encode(
@@ -252,7 +245,7 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                if args.vae is not None:
+                if vqvae is not None:
                     pipeline = LatentAudioDiffusionPipeline(
                         unet=accelerator.unwrap_model(
                             ema_model.averaged_model if args.use_ema else model
@@ -326,7 +319,6 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", type=bool, default=False)
     parser.add_argument("--cache_dir", type=str, default=None)
-    parser.add_argument("--resolution", type=str, default="256")
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
@@ -364,7 +356,6 @@ if __name__ == "__main__":
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
     parser.add_argument("--num_train_steps", type=int, default=1000)
-    parser.add_argument("--latent_resolution", type=int, default=None)
     parser.add_argument("--scheduler",
                         type=str,
                         default="ddpm",
