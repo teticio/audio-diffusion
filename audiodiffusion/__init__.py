@@ -60,7 +60,7 @@ class AudioDiffusion:
 
     def generate_spectrogram_and_audio(
         self,
-        steps: int = None,
+        steps: int = 1000,
         generator: torch.Generator = None
     ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram and convert to audio.
@@ -85,7 +85,7 @@ class AudioDiffusion:
         raw_audio: np.ndarray = None,
         slice: int = 0,
         start_step: int = 0,
-        steps: int = None,
+        steps: int = 1000,
         generator: torch.Generator = None,
         mask_start_secs: float = 0,
         mask_end_secs: float = 0
@@ -157,7 +157,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         raw_audio: np.ndarray = None,
         slice: int = 0,
         start_step: int = 0,
-        steps: int = None,
+        steps: int = 1000,
         generator: torch.Generator = None,
         mask_start_secs: float = 0,
         mask_end_secs: float = 0
@@ -181,8 +181,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             (float, List[np.ndarray]): sample rate and raw audios
         """
 
-        if steps is not None:
-            self.scheduler.set_timesteps(steps)
+        self.scheduler.set_timesteps(steps)
         mask = None
         images = noise = torch.randn(
             (batch_size, self.unet.in_channels, mel.y_res, mel.x_res),
@@ -206,9 +205,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
-                    noise,
-                    torch.tensor(self.scheduler.num_train_timesteps -
-                                 start_step))
+                    noise, torch.tensor(steps - start_step))
 
             pixels_per_second = (mel.get_sample_rate() / mel.hop_length)
             mask_start = int(mask_start_secs * pixels_per_second)
