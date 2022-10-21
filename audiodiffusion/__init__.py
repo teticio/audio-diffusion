@@ -206,7 +206,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
-                    noise, torch.tensor(steps - start_step))
+                    noise,
+                    torch.tensor(self.scheduler.num_train_timesteps -
+                                 start_step))
 
             pixels_per_second = (mel.get_sample_rate() / mel.hop_length)
             mask_start = int(mask_start_secs * pixels_per_second)
