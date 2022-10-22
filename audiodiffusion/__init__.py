@@ -59,37 +59,44 @@ class AudioDiffusion:
                        top_db=top_db)
 
     def generate_spectrogram_and_audio(
-        self,
-        steps: int = 1000,
-        generator: torch.Generator = None
-    ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
+            self,
+            steps: int = 1000,
+            generator: torch.Generator = None,
+            step_generator: torch.Generator = None,
+            eta: float = 0) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram and convert to audio.
 
         Args:
             steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
             generator (torch.Generator): random number generator or None
+            step_generator (torch.Generator): random number generator used to denoise or None
+            eta (float): parameter between 0 and 1 used with DDIM scheduler
 
         Returns:
             PIL Image: mel spectrogram
             (float, np.ndarray): sample rate and raw audio
         """
-        images, (sample_rate, audios) = self.pipe(mel=self.mel,
-                                                  batch_size=1,
-                                                  steps=steps,
-                                                  generator=generator)
+        images, (sample_rate,
+                 audios) = self.pipe(mel=self.mel,
+                                     batch_size=1,
+                                     steps=steps,
+                                     generator=generator,
+                                     step_generator=step_generator,
+                                     eta=eta)
         return images[0], (sample_rate, audios[0])
 
     def generate_spectrogram_and_audio_from_audio(
-        self,
-        audio_file: str = None,
-        raw_audio: np.ndarray = None,
-        slice: int = 0,
-        start_step: int = 0,
-        steps: int = 1000,
-        generator: torch.Generator = None,
-        mask_start_secs: float = 0,
-        mask_end_secs: float = 0
-    ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
+            self,
+            audio_file: str = None,
+            raw_audio: np.ndarray = None,
+            slice: int = 0,
+            start_step: int = 0,
+            steps: int = 1000,
+            generator: torch.Generator = None,
+            mask_start_secs: float = 0,
+            mask_end_secs: float = 0,
+            step_generator: torch.Generator = None,
+            eta: float = 0) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
         Args:
@@ -101,6 +108,8 @@ class AudioDiffusion:
             generator (torch.Generator): random number generator or None
             mask_start_secs (float): number of seconds of audio to mask (not generate) at start
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
+            step_generator (torch.Generator): random number generator used to denoise or None
+            eta (float): parameter between 0 and 1 used with DDIM scheduler
 
         Returns:
             PIL Image: mel spectrogram
@@ -117,7 +126,9 @@ class AudioDiffusion:
                                      steps=steps,
                                      generator=generator,
                                      mask_start_secs=mask_start_secs,
-                                     mask_end_secs=mask_end_secs)
+                                     mask_end_secs=mask_end_secs,
+                                     step_generator=step_generator,
+                                     eta=eta)
         return images[0], (sample_rate, audios[0])
 
     @staticmethod
@@ -160,7 +171,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         steps: int = 1000,
         generator: torch.Generator = None,
         mask_start_secs: float = 0,
-        mask_end_secs: float = 0
+        mask_end_secs: float = 0,
+        step_generator: torch.Generator = None,
+        eta: float = 0
     ) -> Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
@@ -175,6 +188,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             generator (torch.Generator): random number generator or None
             mask_start_secs (float): number of seconds of audio to mask (not generate) at start
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
+            step_generator (torch.Generator): random number generator used to denoise or None
+            eta (float): parameter between 0 and 1 used with DDIM scheduler
 
         Returns:
             List[PIL Image]: mel spectrograms
@@ -182,6 +197,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """
 
         self.scheduler.set_timesteps(steps)
+        step_generator = step_generator or generator
         mask = None
         images = noise = torch.randn(
             (batch_size, self.unet.in_channels, mel.y_res, mel.x_res),
@@ -218,10 +234,20 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         for step, t in enumerate(
                 self.progress_bar(self.scheduler.timesteps[start_step:])):
             model_output = self.unet(images, t)['sample']
-            images = self.scheduler.step(model_output,
-                                         t,
-                                         images,
-                                         generator=generator)['prev_sample']
+
+            if isinstance(self.scheduler, DDIMScheduler):
+                images = self.scheduler.step(
+                    model_output=model_output,
+                    timestep=t,
+                    sample=images,
+                    eta=eta,
+                    generator=step_generator)['prev_sample']
+            else:
+                images = self.scheduler.step(
+                    model_output=model_output,
+                    timestep=t,
+                    sample=images,
+                    generator=step_generator)['prev_sample']
 
             if mask is not None:
                 if mask_start > 0:
