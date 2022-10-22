@@ -10,7 +10,7 @@ from diffusers import (DiffusionPipeline, DDPMPipeline, UNet2DConditionModel,
 
 from .mel import Mel
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 
 class AudioDiffusion:
@@ -199,8 +199,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         mask = None
+        # For backwards compatiibility
+        if type(self.unet.sample_size) == int:
+            self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
         images = noise = torch.randn(
-            (batch_size, self.unet.in_channels, mel.y_res, mel.x_res),
+            (batch_size, self.unet.in_channels) + self.unet.sample_size,
             generator=generator)
 
         if audio_file is not None or raw_audio is not None:
@@ -223,7 +226,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                     torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
                     noise, torch.tensor(steps - start_step))
 
-            pixels_per_second = (mel.get_sample_rate() / mel.hop_length)
+            pixels_per_second = (self.unet.sample_size[1] *
+                                 mel.get_sample_rate() / mel.x_res /
+                                 mel.hop_length)
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(
