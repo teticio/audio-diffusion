@@ -28,5 +28,5 @@ model:
 lightning:
   trainer:
     benchmark: True
-    #accelerator: gpu
+    accelerator: gpu
     devices: 1
