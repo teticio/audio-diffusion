@@ -11,20 +11,19 @@ license: gpl-3.0
 ---
 # audio-diffusion [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/gradio_app.ipynb)
 
-### Apply [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) using the new Hugging Face [diffusers](https://github.com/huggingface/diffusers) package to synthesize music instead of images.
+### Apply diffusion models to synthesize music instead of images using the new Hugging Face [diffusers](https://github.com/huggingface/diffusers) package.
 
 ---
 
 **UPDATES**:
 
-15/10/2022
-Added latent audio diffusion (see below). Also added the possibility to train a model to use DDIM ([Denoising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)) by setting `--scheduler ddim`. These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
+**22/10/2022**. Added DDIM encoder and ability to interpolate between audios in latent "noise" space. Mel spectrograms no longer have to be square (thanks to Tristan for this one), so you can set the vertical (frequency) and horizontal (time) resolutions independently.
 
-4/10/2022
-It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
+**15/10/2022**. Added latent audio diffusion (see below). Also added the possibility to train a DDIM ([Denoising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)). These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
 
-27/9/2022
-You can now generate an audio based on a previous one. You can use this to generate variations of the same audio or even to "remix" a track (via a sort of "style transfer"). You can find examples of how to do this in the [`test_model.ipynb`](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) notebook.
+**4/10/2022**. It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
+
+**27/9/2022**. You can now generate an audio based on a previous one. You can use this to generate variations of the same audio or even to "remix" a track (via a sort of "style transfer"). You can find examples of how to do this in the [`test_model.ipynb`](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) notebook.
 
 ---
 
@@ -32,11 +31,13 @@ You can now generate an audio based on a previous one. You can use this to gener
 
 ---
 
+## DDPM ([De-noising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239))
+
 Audio can be represented as images by transforming to a [mel spectrogram](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum), such as the one shown above. The class `Mel` in `mel.py` can convert a slice of audio into a mel spectrogram of `x_res` x `y_res` and vice versa. The higher the resolution, the less audio information will be lost. You can see how this works in the [`test_mel.ipynb`](https://github.com/teticio/audio-diffusion/blob/main/notebooks/test_mel.ipynb) notebook.
 
-A DDPM model is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio.
+A DDPM is trained on a set of mel spectrograms that have been generated from a directory of audio files. It is then used to synthesize similar mel spectrograms, which are then converted back into audio.
 
-You can play around with some pretrained models on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some automatically generated loops [here](https://soundcloud.com/teticio2/sets/audio-diffusion-loops).
+You can play around with some pre-trained models on [Google Colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/test_model.ipynb) or [Hugging Face spaces](https://huggingface.co/spaces/teticio/audio-diffusion). Check out some automatically generated loops [here](https://soundcloud.com/teticio2/sets/audio-diffusion-loops).
 
 
 | Model | Dataset | Description |
@@ -54,7 +55,6 @@ pip install .
 ```
 
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results.
-
 ```bash
 python scripts/audio_to_images.py \
   --resolution 64,64 \
@@ -119,10 +119,17 @@ accelerate launch --config_file config/accelerate_sagemaker.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
-## Latent Audio Diffusion
-Rather than denoising images directly, it is interesting to work in the "latent space" after first encoding images using an autoencoder. This has a number of advantages. Firstly, the information in the images is compressed into a latent space of a much lower dimension, so it is much faster to train denoising diffusion models and run inference with them. Secondly, similar images tend to be clustered together and interpolating between two images in latent space can produce meaningful combinations.
+## DDIM ([De-noising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf))
+#### A DDIM can be trained by adding the parameter
+```bash
+  --scheduler ddim
+```
+Inference can the be run with far fewer steps than the number used for training (e.g., ~50), allowing for much faster generation. Without retraining, the parameter `eta` can be used to replicate a DDPM if it is set to 1 or a DDIM if it is set to 0, with all values in between being valid. When `eta` is 0 (the default value), the de-noising procedure is deterministic, which means that it can be run in reverse as a kind of encoder that recovers the original noise used in generation. A function `encode` has been added to `AudioDiffusionPipeline` for this purpose. It is then possible to interpolate between audios in the latent "noise" space using the function `slerp` (Spherical Linear intERPolation).
 
-At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality, rather like its cousin `transformers` in the early days of development. In order to train a VAE (Variational Autoencoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format. Note that it uses a perceptual loss function for images; it would be nice to try a perceptual *audio* loss function.
+## Latent Audio Diffusion
+Rather than de-noising images directly, it is interesting to work in the "latent space" after first encoding images using an autoencoder. This has a number of advantages. Firstly, the information in the images is compressed into a latent space of a much lower dimension, so it is much faster to train de-noising diffusion models and run inference with them. Secondly, similar images tend to be clustered together and interpolating between two images in latent space can produce meaningful combinations.
+
+At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality (rather like its cousin `transformers` in the early days of development). In order to train a VAE (Variational AutoEncoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format. Note that it uses a perceptual loss function for images; it would be nice to try a perceptual *audio* loss function.
 
 #### Install dependencies to train with Stable Diffusion
 ```

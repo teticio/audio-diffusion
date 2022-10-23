@@ -9,3 +9,5 @@ audiodiffusion.egg-info
 lightning_logs
 taming
 checkpoints
+Pipfile
+Pipfile.lock

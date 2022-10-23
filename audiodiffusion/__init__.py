@@ -6,12 +6,12 @@ import numpy as np
 from PIL import Image
 from tqdm.auto import tqdm
 from librosa.beat import beat_track
-from diffusers import (DiffusionPipeline, DDPMPipeline, UNet2DConditionModel,
-                       DDIMScheduler, DDPMScheduler, AutoencoderKL)
+from diffusers import (DiffusionPipeline, UNet2DConditionModel, DDIMScheduler,
+                       DDPMScheduler, AutoencoderKL)
 
 from .mel import Mel
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 
 
 class AudioDiffusion:
@@ -24,7 +24,7 @@ class AudioDiffusion:
                  top_db: int = 80,
                  cuda: bool = torch.cuda.is_available(),
                  progress_bar: Iterable = tqdm):
-        """Class for generating audio using Denoising Diffusion Probabilistic Models.
+        """Class for generating audio using De-noising Diffusion Probabilistic Models.
 
         Args:
             model_id (String): name of model (local directory or Hugging Face Hub)
@@ -60,18 +60,21 @@ class AudioDiffusion:
                        top_db=top_db)
 
     def generate_spectrogram_and_audio(
-            self,
-            steps: int = 1000,
-            generator: torch.Generator = None,
-            step_generator: torch.Generator = None,
-            eta: float = 0) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
+        self,
+        steps: int = None,
+        generator: torch.Generator = None,
+        step_generator: torch.Generator = None,
+        eta: float = 0,
+        noise: torch.Tensor = None
+    ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram and convert to audio.
 
         Args:
-            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
+            steps (int): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
             generator (torch.Generator): random number generator or None
-            step_generator (torch.Generator): random number generator used to denoise or None
+            step_generator (torch.Generator): random number generator used to de-noise or None
             eta (float): parameter between 0 and 1 used with DDIM scheduler
+            noise (torch.Tensor): noisy image or None
 
         Returns:
             PIL Image: mel spectrogram
@@ -83,7 +86,8 @@ class AudioDiffusion:
                                      steps=steps,
                                      generator=generator,
                                      step_generator=step_generator,
-                                     eta=eta)
+                                     eta=eta,
+                                     noise=noise)
         return images[0], (sample_rate, audios[0])
 
     def generate_spectrogram_and_audio_from_audio(
@@ -92,7 +96,7 @@ class AudioDiffusion:
         raw_audio: np.ndarray = None,
         slice: int = 0,
         start_step: int = 0,
-        steps: int = 1000,
+        steps: int = None,
         generator: torch.Generator = None,
         mask_start_secs: float = 0,
         mask_end_secs: float = 0,
@@ -107,11 +111,11 @@ class AudioDiffusion:
             raw_audio (np.ndarray): audio as numpy array
             slice (int): slice number of audio to convert
             start_step (int): step to start from
-            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
+            steps (int): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
             generator (torch.Generator): random number generator or None
             mask_start_secs (float): number of seconds of audio to mask (not generate) at start
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
-            step_generator (torch.Generator): random number generator used to denoise or None
+            step_generator (torch.Generator): random number generator used to de-noise or None
             eta (float): parameter between 0 and 1 used with DDIM scheduler
             noise (torch.Tensor): noisy image or None
 
@@ -173,7 +177,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         raw_audio: np.ndarray = None,
         slice: int = 0,
         start_step: int = 0,
-        steps: int = 1000,
+        steps: int = None,
         generator: torch.Generator = None,
         mask_start_secs: float = 0,
         mask_end_secs: float = 0,
@@ -190,23 +194,24 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             raw_audio (np.ndarray): audio as numpy array
             slice (int): slice number of audio to convert
             start_step (int): step to start from
-            steps (int): number of de-noising steps to perform (defaults to num_train_timesteps)
+            steps (int): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
             generator (torch.Generator): random number generator or None
             mask_start_secs (float): number of seconds of audio to mask (not generate) at start
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
-            step_generator (torch.Generator): random number generator used to denoise or None
+            step_generator (torch.Generator): random number generator used to de-noise or None
             eta (float): parameter between 0 and 1 used with DDIM scheduler
-            noise (torch.Tensor): noisy image or None
+            noise (torch.Tensor): noise tensor of shape (batch_size, 1, height, width) or None
 
         Returns:
             List[PIL Image]: mel spectrograms
             (float, List[np.ndarray]): sample rate and raw audios
         """
 
+        steps = steps or 50 if isinstance(self.scheduler,
+                                          DDIMScheduler) else 1000
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
-        mask = None
-        # For backwards compatiibility
+        # For backwards compatibility
         if type(self.unet.sample_size) == int:
             self.unet.sample_size = (self.unet.sample_size,
                                      self.unet.sample_size)
@@ -215,6 +220,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 (batch_size, self.unet.in_channels) + self.unet.sample_size,
                 generator=generator)
         images = noise
+        mask = None
 
         if audio_file is not None or raw_audio is not None:
             mel.load_audio(audio_file, raw_audio)
@@ -289,11 +295,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         return images, (mel.get_sample_rate(), audios)
 
     @torch.no_grad()
-    def encode(self, images: List[Image.Image]) -> np.ndarray:
+    def encode(self, images: List[Image.Image], steps: int = 50) -> np.ndarray:
         """Reverse step process: recover noisy image from generated image.
 
         Args:
             images (List[PIL Image]): list of images to encode
+            steps (int): number of encoding steps to perform (defaults to 50)
 
         Returns:
             np.ndarray: noise tensor of shape (batch_size, 1, height, width)
@@ -301,6 +308,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
         # Only works with DDIM as this method is deterministic
         assert isinstance(self.scheduler, DDIMScheduler)
+        self.scheduler.set_timesteps(steps)
         sample = np.array([
             np.frombuffer(image.tobytes(), dtype="uint8").reshape(
                 (1, image.height, image.width)) for image in images
@@ -308,7 +316,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         sample = ((sample / 255) * 2 - 1)
         sample = torch.Tensor(sample).to(self.device)
 
-        for t in torch.flip(self.scheduler.timesteps, (0, )):
+        for t in self.progress_bar(torch.flip(self.scheduler.timesteps,
+                                              (0, ))):
             prev_timestep = (t - self.scheduler.num_train_timesteps //
                              self.scheduler.num_inference_steps)
             alpha_prod_t = self.scheduler.alphas_cumprod[t]
@@ -334,7 +343,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         Args:
             x0 (torch.Tensor): first tensor to interpolate between
             x1 (torch.Tensor): seconds tensor to interpolate between
-            alpha (float): interpolation betwen 0 and 1
+            alpha (float): interpolation between 0 and 1
 
         Returns:
             torch.Tensor: interpolated tensor
