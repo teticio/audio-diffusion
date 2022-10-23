@@ -1,3 +1,4 @@
+from math import acos, sin
 from typing import Iterable, Tuple, Union, List
 
 import torch
@@ -86,17 +87,19 @@ class AudioDiffusion:
         return images[0], (sample_rate, audios[0])
 
     def generate_spectrogram_and_audio_from_audio(
-            self,
-            audio_file: str = None,
-            raw_audio: np.ndarray = None,
-            slice: int = 0,
-            start_step: int = 0,
-            steps: int = 1000,
-            generator: torch.Generator = None,
-            mask_start_secs: float = 0,
-            mask_end_secs: float = 0,
-            step_generator: torch.Generator = None,
-            eta: float = 0) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
+        self,
+        audio_file: str = None,
+        raw_audio: np.ndarray = None,
+        slice: int = 0,
+        start_step: int = 0,
+        steps: int = 1000,
+        generator: torch.Generator = None,
+        mask_start_secs: float = 0,
+        mask_end_secs: float = 0,
+        step_generator: torch.Generator = None,
+        eta: float = 0,
+        noise: torch.Tensor = None
+    ) -> Tuple[Image.Image, Tuple[int, np.ndarray]]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
         Args:
@@ -110,6 +113,7 @@ class AudioDiffusion:
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
             step_generator (torch.Generator): random number generator used to denoise or None
             eta (float): parameter between 0 and 1 used with DDIM scheduler
+            noise (torch.Tensor): noisy image or None
 
         Returns:
             PIL Image: mel spectrogram
@@ -128,7 +132,8 @@ class AudioDiffusion:
                                      mask_start_secs=mask_start_secs,
                                      mask_end_secs=mask_end_secs,
                                      step_generator=step_generator,
-                                     eta=eta)
+                                     eta=eta,
+                                     noise=noise)
         return images[0], (sample_rate, audios[0])
 
     @staticmethod
@@ -173,7 +178,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         mask_start_secs: float = 0,
         mask_end_secs: float = 0,
         step_generator: torch.Generator = None,
-        eta: float = 0
+        eta: float = 0,
+        noise: torch.Tensor = None
     ) -> Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
@@ -190,6 +196,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             mask_end_secs (float): number of seconds of audio to mask (not generate) at end
             step_generator (torch.Generator): random number generator used to denoise or None
             eta (float): parameter between 0 and 1 used with DDIM scheduler
+            noise (torch.Tensor): noisy image or None
 
         Returns:
             List[PIL Image]: mel spectrograms
@@ -201,10 +208,13 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         mask = None
         # For backwards compatiibility
         if type(self.unet.sample_size) == int:
-            self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
-        images = noise = torch.randn(
-            (batch_size, self.unet.in_channels) + self.unet.sample_size,
-            generator=generator)
+            self.unet.sample_size = (self.unet.sample_size,
+                                     self.unet.sample_size)
+        if noise is None:
+            noise = torch.randn(
+                (batch_size, self.unet.in_channels) + self.unet.sample_size,
+                generator=generator)
+        images = noise
 
         if audio_file is not None or raw_audio is not None:
             mel.load_audio(audio_file, raw_audio)
@@ -277,6 +287,64 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
         audios = list(map(lambda _: mel.image_to_audio(_), images))
         return images, (mel.get_sample_rate(), audios)
+
+    @torch.no_grad()
+    def encode(self, images: List[Image.Image]) -> np.ndarray:
+        """Reverse step process: recover noisy image from generated image.
+
+        Args:
+            images (List[PIL Image]): list of images to encode
+
+        Returns:
+            np.ndarray: noise tensor of shape (batch_size, 1, height, width)
+        """
+
+        # Only works with DDIM as this method is deterministic
+        assert isinstance(self.scheduler, DDIMScheduler)
+        sample = np.array([
+            np.frombuffer(image.tobytes(), dtype="uint8").reshape(
+                (1, image.height, image.width)) for image in images
+        ])
+        sample = ((sample / 255) * 2 - 1)
+        sample = torch.Tensor(sample).to(self.device)
+
+        for t in torch.flip(self.scheduler.timesteps, (0, )):
+            prev_timestep = (t - self.scheduler.num_train_timesteps //
+                             self.scheduler.num_inference_steps)
+            alpha_prod_t = self.scheduler.alphas_cumprod[t]
+            alpha_prod_t_prev = (self.scheduler.alphas_cumprod[prev_timestep]
+                                 if prev_timestep >= 0 else
+                                 self.scheduler.final_alpha_cumprod)
+            beta_prod_t = 1 - alpha_prod_t
+            model_output = self.unet(sample, t)['sample']
+            pred_sample_direction = (1 -
+                                     alpha_prod_t_prev)**(0.5) * model_output
+            sample = (sample -
+                      pred_sample_direction) * alpha_prod_t_prev**(-0.5)
+            sample = sample * alpha_prod_t**(0.5) + beta_prod_t**(
+                0.5) * model_output
+
+        return sample
+
+    @staticmethod
+    def slerp(x0: torch.Tensor, x1: torch.Tensor,
+              alpha: float) -> torch.Tensor:
+        """Spherical Linear intERPolation
+
+        Args:
+            x0 (torch.Tensor): first tensor to interpolate between
+            x1 (torch.Tensor): seconds tensor to interpolate between
+            alpha (float): interpolation betwen 0 and 1
+
+        Returns:
+            torch.Tensor: interpolated tensor
+        """
+
+        theta = acos(
+            torch.dot(torch.flatten(x0), torch.flatten(x1)) / torch.norm(x0) /
+            torch.norm(x1))
+        return sin((1 - alpha) * theta) * x0 / sin(theta) + sin(
+            alpha * theta) * x1 / sin(theta)
 
 
 class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
