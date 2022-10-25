@@ -19,7 +19,7 @@ license: gpl-3.0
 
 **22/10/2022**. Added DDIM encoder and ability to interpolate between audios in latent "noise" space. Mel spectrograms no longer have to be square (thanks to Tristan for this one), so you can set the vertical (frequency) and horizontal (time) resolutions independently.
 
-**15/10/2022**. Added latent audio diffusion (see below). Also added the possibility to train a DDIM ([Denoising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)). These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
+**15/10/2022**. Added latent audio diffusion (see below). Also added the possibility to train a DDIM ([De-noising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)). These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
 
 **4/10/2022**. It is now possible to mask parts of the input audio during generation which means you can stitch several samples together (think "out-painting").
 
