@@ -91,7 +91,7 @@ class ImageLogger(Callback):
             for _, image in enumerate(images[k]):
                 audio = mel.image_to_audio(
                     Image.fromarray(image, mode='RGB').convert('L')
-                    if channels == 3 else Image.fromarray(image[0]))
+                    if channels == 3 else Image.fromarray(image[:, :, 0]))
                 pl_module.logger.experiment.add_audio(
                     tag + f"/{_}",
                     normalize(audio),
