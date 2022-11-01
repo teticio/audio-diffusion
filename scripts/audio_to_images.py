@@ -18,7 +18,8 @@ logger = logging.getLogger('audio_to_images')
 def main(args):
     mel = Mel(x_res=args.resolution[0],
               y_res=args.resolution[1],
-              hop_length=args.hop_length)   
+              hop_length=args.hop_length,
+              sample_rate=args.sample_rate)   
     os.makedirs(args.output_dir, exist_ok=True)
     audio_files = [
         os.path.join(root, file) for root, _, files in os.walk(args.input_dir)
@@ -84,6 +85,7 @@ if __name__ == "__main__":
                         help="Either square resolution or width,height.")
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--push_to_hub", type=str, default=None)
+    parser.add_argument("--sample_rate", type=int, default=22050)
     args = parser.parse_args()
 
     if args.input_dir is None:
