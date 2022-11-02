@@ -244,7 +244,9 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+            if (
+                    epoch + 1
+            ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 if vqvae is not None:
                     pipeline = LatentAudioDiffusionPipeline(
                         unet=accelerator.unwrap_model(
@@ -275,7 +277,9 @@ def main(args):
                 else:
                     pipeline.save_pretrained(output_dir)
 
-            if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            if (
+                    epoch + 1
+            ) % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 generator = torch.manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
                 images, (sample_rate, audios) = pipeline(
