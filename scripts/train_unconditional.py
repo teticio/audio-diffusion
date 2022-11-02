@@ -126,10 +126,10 @@ def main(args):
 
     if args.scheduler == "ddpm":
         noise_scheduler = DDPMScheduler(
-            num_train_timesteps=args.num_train_steps, tensor_format="pt")
+            num_train_timesteps=args.num_train_steps)
     else:
         noise_scheduler = DDIMScheduler(
-            num_train_timesteps=args.num_train_steps, tensor_format="pt")
+            num_train_timesteps=args.num_train_steps)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
