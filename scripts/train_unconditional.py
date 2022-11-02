@@ -277,9 +277,7 @@ def main(args):
                 else:
                     pipeline.save_pretrained(output_dir)
 
-            if (
-                    epoch + 1
-            ) % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            if (epoch + 1) % args.save_images_epochs == 0:
                 generator = torch.manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
                 images, (sample_rate, audios) = pipeline(
