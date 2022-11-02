@@ -47,7 +47,7 @@ class Mel:
             raw_audio (np.ndarray): audio as numpy array
         """
         if audio_file is not None:
-            self.audio, _ = librosa.load(audio_file, mono=True)
+            self.audio, _ = librosa.load(audio_file, mono=True, sr=self.sr)
         else:
             self.audio = raw_audio
 
