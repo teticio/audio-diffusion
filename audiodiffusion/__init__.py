@@ -213,11 +213,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         step_generator = step_generator or generator
         # For backwards compatibility
         if type(self.unet.sample_size) == int:
-            self.unet.sample_size = (self.unet.sample_size,
-                                     self.unet.sample_size)
+            self.unet.sample_size = [self.unet.sample_size,
+                                     self.unet.sample_size]
         if noise is None:
             noise = torch.randn(
-                (batch_size, self.unet.in_channels) + self.unet.sample_size,
+                [batch_size, self.unet.in_channels] + self.unet.sample_size,
                 generator=generator)
         images = noise
         mask = None

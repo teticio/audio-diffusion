@@ -7,3 +7,4 @@ datasets
 gradio
 streamlit
 tensorboard
+accelerate
