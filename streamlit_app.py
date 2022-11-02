@@ -10,11 +10,13 @@ if __name__ == "__main__":
     st.header("Audio Diffusion")
     st.markdown("Generate audio using Huggingface diffusers.\
         This takes about 20 minutes without a GPU, so why not make yourself a \
-            cup of tea in the meantime?")
+            cup of tea in the meantime? (Or try the teticio/audio-diffusion-ddim-256 \
+                model which is faster.)")
 
     model_id = st.selectbox("Model", [
         "teticio/audio-diffusion-256", "teticio/audio-diffusion-breaks-256",
-        "teticio/audio-diffusion-instrumental-hiphop-256"
+        "teticio/audio-diffusion-instrumental-hiphop-256",
+        "teticio/audio-diffusion-ddim-256"
     ])
     audio_diffusion = AudioDiffusion(model_id=model_id)
 
