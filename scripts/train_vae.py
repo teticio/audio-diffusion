@@ -144,6 +144,7 @@ if __name__ == "__main__":
                         default=1)
     parser.add_argument("--hop_length", type=int, default=512)
     parser.add_argument("--save_images_batches", type=int, default=1000)
+    parser.add_argument("--max_epochs", type=int, default=100)
     args = parser.parse_args()
 
     config = OmegaConf.load(args.ldm_config_file)
