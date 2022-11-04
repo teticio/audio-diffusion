@@ -160,6 +160,7 @@ if __name__ == "__main__":
     trainer_opt = argparse.Namespace(**trainer_config)
     trainer = Trainer.from_argparse_args(
         trainer_opt,
+        max_epochs=args.max_epochs,
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
             ImageLogger(every=args.save_images_batches,
