@@ -119,7 +119,7 @@ class Mel:
             audio (np.ndarray): raw audio
         """
         bytedata = np.frombuffer(image.tobytes(), dtype="uint8").reshape(
-            (image.width, image.height))
+            (image.height, image.width))
         log_S = bytedata.astype("float") * self.top_db / 255 - self.top_db
         S = librosa.db_to_power(log_S)
         audio = librosa.feature.inverse.mel_to_audio(

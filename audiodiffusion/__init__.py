@@ -11,7 +11,7 @@ from diffusers import (DiffusionPipeline, UNet2DConditionModel, DDIMScheduler,
 
 from .mel import Mel
 
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 
 
 class AudioDiffusion:
