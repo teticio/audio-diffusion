@@ -1,3 +1,5 @@
+# based on https://github.com/CompVis/stable-diffusion/blob/main/main.py
+
 import os
 import argparse
 

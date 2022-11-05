@@ -1,4 +1,6 @@
 
+# based on https://github.com/CompVis/stable-diffusion/blob/main/configs/autoencoder/autoencoder_kl_32x32x4.yaml
+
 model:
   base_learning_rate: 4.5e-6
   target: ldm.models.autoencoder.AutoencoderKL
