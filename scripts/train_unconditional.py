@@ -11,6 +11,7 @@ from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
 from diffusers import (DiffusionPipeline, DDPMScheduler, UNet2DModel,
                        DDIMScheduler, AutoencoderKL)
+from diffusers.modeling_utils import EntryNotFoundError
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -85,7 +86,11 @@ def main(args):
 
     vqvae = None
     if args.vae is not None:
-        vqvae = AutoencoderKL.from_pretrained(args.vae)
+        try:
+            vqvae = AutoencoderKL.from_pretrained(args.vae)
+        except EnvironmentError:
+            vqvae = LatentAudioDiffusionPipeline.from_pretrained(
+                args.vae).vqvae
         # Determine latent resolution
         with torch.no_grad():
             latent_resolution = vqvae.encode(
@@ -93,10 +98,16 @@ def main(args):
                             resolution)).latent_dist.sample().shape[2:]
 
     if args.from_pretrained is not None:
-        pipeline = DiffusionPipeline.from_pretrained(args.from_pretrained)
+        pipeline = {
+            'LatentAudioDiffusionPipeline': LatentAudioDiffusionPipeline,
+            'AudioDiffusionPipeline': AudioDiffusionPipeline
+        }.get(
+            DiffusionPipeline.get_config_dict(
+                args.from_pretrained)['_class_name'], AudioDiffusionPipeline)
+        pipeline = pipeline.from_pretrained(args.from_pretrained)
         model = pipeline.unet
         if hasattr(pipeline, 'vqvae'):
-            vqvae = AutoencoderKL.from_pretrained(args.vae)
+            vqvae = pipeline.vqvae
     else:
         model = UNet2DModel(
             sample_size=resolution if vqvae is None else latent_resolution,

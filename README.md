@@ -119,11 +119,13 @@ accelerate launch --config_file config/accelerate_sagemaker.yaml \
   --lr_warmup_steps 500 \
   --mixed_precision no
 ```
+
 ## DDIM ([De-noising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf))
 #### A DDIM can be trained by adding the parameter
 ```bash
   --scheduler ddim
 ```
+
 Inference can the be run with far fewer steps than the number used for training (e.g., ~50), allowing for much faster generation. Without retraining, the parameter `eta` can be used to replicate a DDPM if it is set to 1 or a DDIM if it is set to 0, with all values in between being valid. When `eta` is 0 (the default value), the de-noising procedure is deterministic, which means that it can be run in reverse as a kind of encoder that recovers the original noise used in generation. A function `encode` has been added to `AudioDiffusionPipeline` for this purpose. It is then possible to interpolate between audios in the latent "noise" space using the function `slerp` (Spherical Linear intERPolation).
 
 ## Latent Audio Diffusion
@@ -131,7 +133,14 @@ Rather than de-noising images directly, it is interesting to work in the "latent
 
 At the time of writing, the Hugging Face `diffusers` library is geared towards inference and lacking in training functionality (rather like its cousin `transformers` in the early days of development). In order to train a VAE (Variational AutoEncoder), I use the [stable-diffusion](https://github.com/CompVis/stable-diffusion) repo from CompVis and convert the checkpoints to `diffusers` format. Note that it uses a perceptual loss function for images; it would be nice to try a perceptual *audio* loss function.
 
-#### Install dependencies to train with Stable Diffusion
+#### Train latent diffusion model using pre-trained VAE.
+```bash
+accelerate launch ...
+  ...
+  --vae teticio/latent-audio-diffusion-256
+```
+
+#### Install dependencies to train with Stable Diffusion.
 ```
 pip install omegaconf pytorch_lightning
 pip install -e git+https://github.com/CompVis/stable-diffusion.git@main#egg=latent-diffusion
