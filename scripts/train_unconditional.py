@@ -11,16 +11,12 @@ from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
 from diffusers import (DiffusionPipeline, DDPMScheduler, UNet2DModel,
                        DDIMScheduler, AutoencoderKL)
-from diffusers.modeling_utils import EntryNotFoundError
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from torchvision.transforms import (
-    CenterCrop,
     Compose,
-    InterpolationMode,
     Normalize,
-    Resize,
     ToTensor,
 )
 import numpy as np
