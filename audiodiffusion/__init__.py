@@ -261,7 +261,6 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 images[0, 0] = self.scheduler.add_noise(
                     input_images, noise,
                     self.scheduler.timesteps[start_step - 1])
-                print(self.scheduler.timesteps[start_step - 1])
 
             pixels_per_second = (self.unet.sample_size[1] *
                                  mel.get_sample_rate() / mel.x_res /
