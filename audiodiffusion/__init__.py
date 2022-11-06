@@ -11,7 +11,7 @@ from diffusers import (DiffusionPipeline, UNet2DConditionModel, DDIMScheduler,
 
 from .mel import Mel
 
-VERSION = "1.2.5"
+VERSION = "1.2.6"
 
 
 class AudioDiffusion:
@@ -47,11 +47,7 @@ class AudioDiffusion:
             self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
 
-        # For backwards compatibility
-        sample_size = (self.pipe.unet.sample_size,
-                       self.pipe.unet.sample_size) if type(
-                           self.pipe.unet.sample_size
-                       ) == int else self.pipe.unet.sample_size
+        sample_size = self.pipe.get_input_dims()
         self.mel = Mel(x_res=sample_size[1],
                        y_res=sample_size[0],
                        sample_rate=sample_rate,
@@ -168,6 +164,27 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 
+    def get_input_dims(self) -> Tuple:
+        """Returns dimension of input image
+
+        Returns:
+            Tuple: (height, width)
+        """
+        input_module = self.vqvae if hasattr(self, 'vqvae') else self.unet
+        # For backwards compatibility
+        sample_size = (
+            input_module.sample_size, input_module.sample_size) if type(
+                input_module.sample_size) == int else input_module.sample_size
+        return sample_size
+
+    def get_default_steps(self) -> int:
+        """Returns default number of steps recommended for inference
+
+        Returns:
+            int: number of steps
+        """
+        return 50 if isinstance(self.scheduler, DDIMScheduler) else 1000
+
     @torch.no_grad()
     def __call__(
         self,
@@ -207,8 +224,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             (float, List[np.ndarray]): sample rate and raw audios
         """
 
-        steps = steps or 50 if isinstance(self.scheduler,
-                                          DDIMScheduler) else 1000
+        steps = steps or self.get_default_steps()
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         # For backwards compatibility
@@ -231,17 +247,21 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                                             (input_image.height,
                                              input_image.width))
             input_image = ((input_image / 255) * 2 - 1)
-            input_images = np.tile(input_image, (batch_size, 1, 1, 1))
+            input_images = torch.tensor(input_image[np.newaxis, :, :],
+                                        dtype=torch.float)
 
             if hasattr(self, 'vqvae'):
                 input_images = self.vqvae.encode(
-                    input_images).latent_dist.sample(generator=generator)
+                    torch.unsqueeze(input_images,
+                                    0).to(self.device)).latent_dist.sample(
+                                        generator=generator).cpu()[0]
                 input_images = 0.18215 * input_images
 
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(
-                    torch.tensor(input_images[:, np.newaxis, np.newaxis, :]),
-                    noise, torch.tensor(steps - start_step))
+                    input_images, noise,
+                    self.scheduler.timesteps[start_step - 1])
+                print(self.scheduler.timesteps[start_step - 1])
 
             pixels_per_second = (self.unet.sample_size[1] *
                                  mel.get_sample_rate() / mel.x_res /
@@ -249,7 +269,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(
-                torch.tensor(input_images[:, np.newaxis, :]), noise,
+                input_images, noise,
                 torch.tensor(self.scheduler.timesteps[start_step:]))
 
         images = images.to(self.device)
@@ -273,11 +293,10 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
             if mask is not None:
                 if mask_start > 0:
-                    images[:, :, :, :mask_start] = mask[
-                        step, :, :, :, :mask_start]
+                    images[:, :, :, :mask_start] = mask[:,
+                                                        step, :, :mask_start]
                 if mask_end > 0:
-                    images[:, :, :, -mask_end:] = mask[step, :, :, :,
-                                                       -mask_end:]
+                    images[:, :, :, -mask_end:] = mask[:, step, :, -mask_end:]
 
         if hasattr(self, 'vqvae'):
             # 0.18215 was scaling factor used in training to ensure unit variance
