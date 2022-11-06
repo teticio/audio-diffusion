@@ -16,7 +16,7 @@ class Mel:
         sample_rate: int = 22050,
         n_fft: int = 2048,
         hop_length: int = 512,
-        top_db: int = 80,
+        top_db: int = 80
     ):
         """Class to convert audio to mel spectrograms and vice versa.
 
@@ -35,7 +35,6 @@ class Mel:
         self.hop_length = hop_length
         self.n_mels = self.y_res
         self.slice_size = self.x_res * self.hop_length - 1
-        self.fmax = self.sr / 2
         self.top_db = top_db
         self.audio = None
 
@@ -100,8 +99,7 @@ class Mel:
             sr=self.sr,
             n_fft=self.n_fft,
             hop_length=self.hop_length,
-            n_mels=self.n_mels,
-            fmax=self.fmax,
+            n_mels=self.n_mels
         )
         log_S = librosa.power_to_db(S, ref=np.max, top_db=self.top_db)
         bytedata = (((log_S + self.top_db) * 255 / self.top_db).clip(0, 255) +
