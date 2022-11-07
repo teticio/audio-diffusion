@@ -8,16 +8,19 @@ from audiodiffusion import AudioDiffusion
 
 if __name__ == "__main__":
     st.header("Audio Diffusion")
-    st.markdown("Generate audio using Huggingface diffusers.\
-        This takes about 20 minutes without a GPU, so why not make yourself a \
-            cup of tea in the meantime? (Or try the teticio/audio-diffusion-ddim-256 \
-                model which is faster.)")
+    st.markdown(
+        "Generate audio using Huggingface diffusers.\
+        The models without 'latent' or 'ddim' give better results but take about \
+            20 minutes without a GPU.", )
 
     model_id = st.selectbox("Model", [
         "teticio/audio-diffusion-256", "teticio/audio-diffusion-breaks-256",
         "teticio/audio-diffusion-instrumental-hiphop-256",
-        "teticio/audio-diffusion-ddim-256"
-    ])
+        "teticio/audio-diffusion-ddim-256",
+        "teticio/latent-audio-diffusion-256",
+        "teticio/latent-audio-diffusion-ddim-256"
+    ],
+                            index=5)
     audio_diffusion = AudioDiffusion(model_id=model_id)
 
     if st.button("Generate"):
