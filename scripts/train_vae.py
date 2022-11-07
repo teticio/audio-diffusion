@@ -60,10 +60,16 @@ class AudioDiffusionDataModule(pl.LightningDataModule):
 
 class ImageLogger(Callback):
 
-    def __init__(self, every=1000, hop_length=512):
+    def __init__(self,
+                 every=1000,
+                 hop_length=512,
+                 sample_rate=22050,
+                 n_fft=2048):
         super().__init__()
         self.every = every
         self.hop_length = hop_length
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
 
     @rank_zero_only
     def log_images_and_audios(self, pl_module, batch):
@@ -76,7 +82,9 @@ class ImageLogger(Callback):
         channels = image_shape[1]
         mel = Mel(x_res=image_shape[2],
                   y_res=image_shape[3],
-                  hop_length=self.hop_length)
+                  hop_length=self.hop_length,
+                  sample_rate=self.sample_rate,
+                  n_fft=self.n_fft)
 
         for k in images:
             images[k] = images[k].detach().cpu()
@@ -145,6 +153,8 @@ if __name__ == "__main__":
                         type=int,
                         default=1)
     parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--sample_rate", type=int, default=22050)
+    parser.add_argument("--n_fft", type=int, default=2048)
     parser.add_argument("--save_images_batches", type=int, default=1000)
     parser.add_argument("--max_epochs", type=int, default=100)
     args = parser.parse_args()
@@ -166,7 +176,9 @@ if __name__ == "__main__":
         resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
             ImageLogger(every=args.save_images_batches,
-                        hop_length=args.hop_length),
+                        hop_length=args.hop_length,
+                        sample_rate=args.sample_rate,
+                        n_fft=args.n_fft),
             HFModelCheckpoint(ldm_config=config,
                               hf_checkpoint=args.hf_checkpoint_dir,
                               dirpath=args.ldm_checkpoint_dir,

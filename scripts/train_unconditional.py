@@ -173,7 +173,9 @@ def main(args):
 
     mel = Mel(x_res=resolution[1],
               y_res=resolution[0],
-              hop_length=args.hop_length)
+              hop_length=args.hop_length,
+              sample_rate=args.sample_rate,
+              n_fft=args.n_fft)
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -362,6 +364,8 @@ if __name__ == "__main__":
             "and an Nvidia Ampere GPU."),
     )
     parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--sample_rate", type=int, default=22050)
+    parser.add_argument("--n_fft", type=int, default=2048)
     parser.add_argument("--from_pretrained", type=str, default=None)
     parser.add_argument("--start_epoch", type=int, default=0)
     parser.add_argument("--num_train_steps", type=int, default=1000)

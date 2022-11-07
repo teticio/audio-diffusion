@@ -71,7 +71,9 @@ python scripts/audio_to_images.py \
   --output_dir data/audio-diffusion-256 \
   --push_to_hub teticio/audio-diffusion-256
 ```
-  
+
+Note that the default `sample_rate` is 22050 and audios will be resampled if they are at a different rate. If you change this value, you may find that the results in the `test_mel.ipynb` notebook are not good (for example, if `sample_rate` is 48000) and that it is necessary to adjust `n_fft` (for example, to 2000 instead of the default value of 2048; alternatively, you can resample to a `sample_rate` of 44100). Make sure you use the same parameters for training and inference. You should also bear in mind that not all resolutions work with the neural network architecture as currently configured - you should be safe if you stick to powers of 2.
+
 ## Train model
 #### Run training on local machine.
 ```bash
