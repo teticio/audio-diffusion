@@ -9,15 +9,14 @@ from PIL import Image
 
 class Mel:
 
-    def __init__(
-        self,
-        x_res: int = 256,
-        y_res: int = 256,
-        sample_rate: int = 22050,
-        n_fft: int = 2048,
-        hop_length: int = 512,
-        top_db: int = 80
-    ):
+    def __init__(self,
+                 x_res: int = 256,
+                 y_res: int = 256,
+                 sample_rate: int = 22050,
+                 n_fft: int = 2048,
+                 hop_length: int = 512,
+                 top_db: int = 80,
+                 n_iter: int = 32):
         """Class to convert audio to mel spectrograms and vice versa.
 
         Args:
@@ -27,6 +26,7 @@ class Mel:
             n_fft (int): number of Fast Fourier Transforms
             hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
             top_db (int): loudest in decibels
+            n_iter (int): number of iterations for Griffin Linn mel inversion
         """
         self.x_res = x_res
         self.y_res = y_res
@@ -36,6 +36,7 @@ class Mel:
         self.n_mels = self.y_res
         self.slice_size = self.x_res * self.hop_length - 1
         self.top_db = top_db
+        self.n_iter = n_iter
         self.audio = None
 
     def load_audio(self, audio_file: str = None, raw_audio: np.ndarray = None):
@@ -94,13 +95,11 @@ class Mel:
         Returns:
             PIL Image: grayscale image of x_res x y_res
         """
-        S = librosa.feature.melspectrogram(
-            y=self.get_audio_slice(slice),
-            sr=self.sr,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels
-        )
+        S = librosa.feature.melspectrogram(y=self.get_audio_slice(slice),
+                                           sr=self.sr,
+                                           n_fft=self.n_fft,
+                                           hop_length=self.hop_length,
+                                           n_mels=self.n_mels)
         log_S = librosa.power_to_db(S, ref=np.max, top_db=self.top_db)
         bytedata = (((log_S + self.top_db) * 255 / self.top_db).clip(0, 255) +
                     0.5).astype(np.uint8)
@@ -121,5 +120,9 @@ class Mel:
         log_S = bytedata.astype("float") * self.top_db / 255 - self.top_db
         S = librosa.db_to_power(log_S)
         audio = librosa.feature.inverse.mel_to_audio(
-            S, sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length)
+            S,
+            sr=self.sr,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            n_iter=self.n_iter)
         return audio
