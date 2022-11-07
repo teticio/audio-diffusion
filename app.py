@@ -20,7 +20,9 @@ demo = gr.Interface(
     title="Audio Diffusion",
     description="Generate audio using Huggingface diffusers.\
         The models without 'latent' or 'ddim' give better results but take about \
-            20 minutes without a GPU.",
+            20 minutes without a GPU. For GPU, you can use \
+                [colab](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/gradio_app.ipynb) \
+                    to run this app.",
     inputs=[
         gr.Dropdown(label="Model",
                     choices=[
