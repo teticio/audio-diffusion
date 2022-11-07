@@ -17,6 +17,8 @@ license: gpl-3.0
 
 **UPDATES**:
 
+**7/11/2022**. Added pre-trained latent audio diffusion models [teticio/latent-audio-diffusion-256](https://huggingface.co/teticio/latent-audio-diffusion-256) and [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256). You can use the pre-trained VAE to train your own latent diffusion models on a different set of audio files.
+
 **22/10/2022**. Added DDIM encoder and ability to interpolate between audios in latent "noise" space. Mel spectrograms no longer have to be square (thanks to Tristan for this one), so you can set the vertical (frequency) and horizontal (time) resolutions independently.
 
 **15/10/2022**. Added latent audio diffusion (see below). Also added the possibility to train a DDIM ([De-noising Diffusion Implicit Models](https://arxiv.org/pdf/2010.02502.pdf)). These have the benefit that samples can be generated with much fewer steps (~50) than used in training.
@@ -45,6 +47,9 @@ You can play around with some pre-trained models on [Google Colab](https://colab
 | [teticio/audio-diffusion-256](https://huggingface.co/teticio/audio-diffusion-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | My "liked" Spotify playlist |
 | [teticio/audio-diffusion-breaks-256](https://huggingface.co/teticio/audio-diffusion-breaks-256) | [teticio/audio-diffusion-breaks-256](https://huggingface.co/datasets/teticio/audio-diffusion-breaks-256) | Samples that have been used in music, sourced from [WhoSampled](https://whosampled.com) and [YouTube](https://youtube.com) |
 | [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/teticio/audio-diffusion-instrumental-hiphop-256) | [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/datasets/teticio/audio-diffusion-instrumental-hiphop-256) | Instrumental Hip Hop music |
+| [teticio/audio-diffusion-ddim-256](https://huggingface.co/teticio/audio-diffusion-ddim-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | De-noising Diffusion Implicit Model |
+| [teticio/latent-audio-diffusion-256](https://huggingface.co/teticio/latent-audio-diffusion-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | Latent Audio Diffusion model |
+| [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | Latent Audio Diffusion De-noising Diffusion Implicit Model |
 
 ---
 
