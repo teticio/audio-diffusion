@@ -161,7 +161,7 @@ accelerate launch ...
 #### Install dependencies to train with Stable Diffusion
 
 ```bash
-pip install omegaconf pytorch_lightning
+pip install omegaconf pytorch_lightning==1.7.7 torchvision einops
 pip install -e git+https://github.com/CompVis/stable-diffusion.git@main#egg=latent-diffusion
 pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
 ```
