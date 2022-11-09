@@ -5,6 +5,7 @@ data
 models
 flagged
 build
+dist
 audiodiffusion.egg-info
 lightning_logs
 taming
