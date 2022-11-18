@@ -13,7 +13,7 @@ from diffusers.pipeline_utils import (AudioPipelineOutput, BaseOutput,
 
 from .mel import Mel
 
-VERSION = "1.2.6"
+VERSION = "1.2.7"
 
 
 class AudioDiffusion:
