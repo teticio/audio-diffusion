@@ -14,8 +14,14 @@ license: gpl-3.0
 ## Apply diffusion models to synthesize music instead of images using the new Hugging Face [diffusers](https://github.com/huggingface/diffusers) package
 
 ---
+#### Sample automatically generated loop
 
-**UPDATES**:
+https://user-images.githubusercontent.com/44233095/204103172-27f25d63-5e77-40ca-91ab-d04a45d4726f.mp4
+
+Go to https://soundcloud.com/teticio2/sets/audio-diffusion-loops for more examples.
+
+---
+#### Updates
 
 **7/11/2022**. Added pre-trained latent audio diffusion models [teticio/latent-audio-diffusion-256](https://huggingface.co/teticio/latent-audio-diffusion-256) and [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256). You can use the pre-trained VAE to train your own latent diffusion models on a different set of audio files.
 
