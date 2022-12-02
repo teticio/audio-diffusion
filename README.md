@@ -37,7 +37,7 @@ Go to https://soundcloud.com/teticio2/sets/audio-diffusion-loops for more exampl
 
 ---
 
-![mel spectrogram](mel.png)
+![mel spectrogram](https://user-images.githubusercontent.com/44233095/205305826-8b39c917-26c5-49b4-887c-776f5d69e970.png)
 
 ---
 
