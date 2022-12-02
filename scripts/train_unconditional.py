@@ -1,5 +1,9 @@
 # based on https://github.com/huggingface/diffusers/blob/main/examples/train_unconditional.py
 
+# TODO
+# Migrate to diffusers
+# from diffusers.hub_utils import Repository
+
 import argparse
 import os
 
@@ -9,8 +13,13 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
-from diffusers import (DiffusionPipeline, DDPMScheduler, UNet2DModel,
-                       DDIMScheduler, AutoencoderKL)
+from diffusers import (
+    #AudioDiffusionPipeline,
+    DDPMScheduler,
+    UNet2DModel,
+    DDIMScheduler,
+    AutoencoderKL,
+)
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -23,8 +32,8 @@ import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
-from audiodiffusion.mel import Mel
-from audiodiffusion import LatentAudioDiffusionPipeline, AudioDiffusionPipeline
+#from diffusers import Mel, AudioDiffusionPipeline
+from audiodiffusion import Mel, AudioDiffusionPipeline
 
 logger = get_logger(__name__)
 
@@ -59,7 +68,7 @@ def main(args):
             split="train",
         )
     # Determine image resolution
-    resolution = dataset[0]['image'].height, dataset[0]['image'].width
+    resolution = dataset[0]["image"].height, dataset[0]["image"].width
 
     augmentations = Compose([
         ToTensor(),
@@ -67,9 +76,9 @@ def main(args):
     ])
 
     def transforms(examples):
-        if args.vae is not None and vqvae.config['in_channels'] == 3:
+        if args.vae is not None and vqvae.config["in_channels"] == 3:
             images = [
-                augmentations(image.convert('RGB'))
+                augmentations(image.convert("RGB"))
                 for image in examples["image"]
             ]
         else:
@@ -85,32 +94,27 @@ def main(args):
         try:
             vqvae = AutoencoderKL.from_pretrained(args.vae)
         except EnvironmentError:
-            vqvae = LatentAudioDiffusionPipeline.from_pretrained(
+            vqvae = AudioDiffusionPipeline.from_pretrained(
                 args.vae).vqvae
         # Determine latent resolution
         with torch.no_grad():
-            latent_resolution = vqvae.encode(
+            latent_resolution = (vqvae.encode(
                 torch.zeros((1, 1) +
-                            resolution)).latent_dist.sample().shape[2:]
+                            resolution)).latent_dist.sample().shape[2:])
 
     if args.from_pretrained is not None:
-        pipeline = {
-            'LatentAudioDiffusionPipeline': LatentAudioDiffusionPipeline,
-            'AudioDiffusionPipeline': AudioDiffusionPipeline
-        }.get(
-            DiffusionPipeline.get_config_dict(
-                args.from_pretrained)['_class_name'], AudioDiffusionPipeline)
-        pipeline = pipeline.from_pretrained(args.from_pretrained)
+        pipeline = AudioDiffusionPipeline.from_pretrained(args.from_pretrained)
+        mel = pipeline.mel
         model = pipeline.unet
-        if hasattr(pipeline, 'vqvae'):
+        if hasattr(pipeline, "vqvae"):
             vqvae = pipeline.vqvae
     else:
         model = UNet2DModel(
             sample_size=resolution if vqvae is None else latent_resolution,
             in_channels=1
-            if vqvae is None else vqvae.config['latent_channels'],
+            if vqvae is None else vqvae.config["latent_channels"],
             out_channels=1
-            if vqvae is None else vqvae.config['latent_channels'],
+            if vqvae is None else vqvae.config["latent_channels"],
             layers_per_block=2,
             block_out_channels=(128, 128, 256, 256, 512, 512),
             down_block_types=(
@@ -171,11 +175,13 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
-    mel = Mel(x_res=resolution[1],
-              y_res=resolution[0],
-              hop_length=args.hop_length,
-              sample_rate=args.sample_rate,
-              n_fft=args.n_fft)
+    mel = Mel(
+        x_res=resolution[1],
+        y_res=resolution[0],
+        hop_length=args.hop_length,
+        sample_rate=args.sample_rate,
+        n_fft=args.n_fft,
+    )
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -256,20 +262,14 @@ def main(args):
             if (
                     epoch + 1
             ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                if vqvae is not None:
-                    pipeline = LatentAudioDiffusionPipeline(
-                        unet=accelerator.unwrap_model(
-                            ema_model.averaged_model if args.use_ema else model
-                        ),
-                        vqvae=vqvae,
-                        scheduler=noise_scheduler)
-                else:
-                    pipeline = AudioDiffusionPipeline(
-                        unet=accelerator.unwrap_model(
-                            ema_model.averaged_model if args.use_ema else model
-                        ),
-                        scheduler=noise_scheduler,
-                    )
+                pipeline = AudioDiffusionPipeline(
+                    vqvae=vqvae,
+                    unet=accelerator.unwrap_model(
+                        ema_model.averaged_model if args.use_ema else model
+                    ),
+                    mel=mel,
+                    scheduler=noise_scheduler,
+                )
 
                 # save the model
                 if args.push_to_hub:
@@ -287,12 +287,13 @@ def main(args):
                     pipeline.save_pretrained(output_dir)
 
             if (epoch + 1) % args.save_images_epochs == 0:
-                generator = torch.manual_seed(42)
+                generator = torch.Generator(
+                    device=clean_images.device).manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
                 images, (sample_rate, audios) = pipeline(
-                    mel=mel,
                     generator=generator,
                     batch_size=args.eval_batch_size,
+                    return_dict=False
                 )
 
                 # denormalize the images and save to tensorboard
@@ -373,10 +374,12 @@ if __name__ == "__main__":
                         type=str,
                         default="ddpm",
                         help="ddpm or ddim")
-    parser.add_argument("--vae",
-                        type=str,
-                        default=None,
-                        help="pretrained VAE model for latent diffusion")
+    parser.add_argument(
+        "--vae",
+        type=str,
+        default=None,
+        help="pretrained VAE model for latent diffusion",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))

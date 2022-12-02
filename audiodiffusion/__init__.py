@@ -1,61 +1,33 @@
-from math import acos, sin
-from typing import Iterable, Tuple, Union, List
+from typing import Iterable, Tuple, Union
 
 import torch
 import numpy as np
 from PIL import Image
 from tqdm.auto import tqdm
 from librosa.beat import beat_track
-from diffusers import (DiffusionPipeline, UNet2DConditionModel, DDIMScheduler,
-                       DDPMScheduler, AutoencoderKL)
-from diffusers.pipeline_utils import (AudioPipelineOutput, BaseOutput,
-                                      ImagePipelineOutput)
+#from diffusers import DiffusionPipeline
 
-from .mel import Mel
-
-VERSION = "1.2.7"
+VERSION = "1.3.0"
 
 
 class AudioDiffusion:
 
     def __init__(self,
                  model_id: str = "teticio/audio-diffusion-256",
-                 sample_rate: int = 22050,
-                 n_fft: int = 2048,
-                 hop_length: int = 512,
-                 top_db: int = 80,
                  cuda: bool = torch.cuda.is_available(),
                  progress_bar: Iterable = tqdm):
         """Class for generating audio using De-noising Diffusion Probabilistic Models.
 
         Args:
             model_id (String): name of model (local directory or Hugging Face Hub)
-            sample_rate (int): sample rate of audio
-            n_fft (int): number of Fast Fourier Transforms
-            hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
-            top_db (int): loudest in decibels
             cuda (bool): use CUDA?
             progress_bar (iterable): iterable callback for progress updates or None
         """
         self.model_id = model_id
-        pipeline = {
-            'LatentAudioDiffusionPipeline': LatentAudioDiffusionPipeline,
-            'AudioDiffusionPipeline': AudioDiffusionPipeline
-        }.get(
-            DiffusionPipeline.get_config_dict(self.model_id)['_class_name'],
-            AudioDiffusionPipeline)
-        self.pipe = pipeline.from_pretrained(self.model_id)
+        self.pipe = AudioDiffusionPipeline.from_pretrained(self.model_id)
         if cuda:
             self.pipe.to("cuda")
         self.progress_bar = progress_bar or (lambda _: _)
-
-        sample_size = self.pipe.get_input_dims()
-        self.mel = Mel(x_res=sample_size[1],
-                       y_res=sample_size[0],
-                       sample_rate=sample_rate,
-                       n_fft=n_fft,
-                       hop_length=hop_length,
-                       top_db=top_db)
 
     def generate_spectrogram_and_audio(
         self,
@@ -79,8 +51,7 @@ class AudioDiffusion:
             (float, np.ndarray): sample rate and raw audio
         """
         images, (sample_rate,
-                 audios) = self.pipe(mel=self.mel,
-                                     batch_size=1,
+                 audios) = self.pipe(batch_size=1,
                                      steps=steps,
                                      generator=generator,
                                      step_generator=step_generator,
@@ -124,8 +95,7 @@ class AudioDiffusion:
         """
 
         images, (sample_rate,
-                 audios) = self.pipe(mel=self.mel,
-                                     batch_size=1,
+                 audios) = self.pipe(batch_size=1,
                                      audio_file=audio_file,
                                      raw_audio=raw_audio,
                                      slice=slice,
@@ -161,18 +131,274 @@ class AudioDiffusion:
         return None
 
 
+# This code will be migrated to diffusers shortly
+
+#-----------------------------------------------------------------------------#
+
+import os
+import warnings
+from typing import Any, Dict, Optional, Union
+
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+
+
+warnings.filterwarnings("ignore")
+
+import numpy as np  # noqa: E402
+
+import librosa  # noqa: E402
+from PIL import Image  # noqa: E402
+
+
+class Mel(ConfigMixin):
+    """
+    Parameters:
+        x_res (`int`): x resolution of spectrogram (time)
+        y_res (`int`): y resolution of spectrogram (frequency bins)
+        sample_rate (`int`): sample rate of audio
+        n_fft (`int`): number of Fast Fourier Transforms
+        hop_length (`int`): hop length (a higher number is recommended for lower than 256 y_res)
+        top_db (`int`): loudest in decibels
+        n_iter (`int`): number of iterations for Griffin Linn mel inversion
+    """
+
+    config_name = "mel_config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        x_res: int = 256,
+        y_res: int = 256,
+        sample_rate: int = 22050,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        top_db: int = 80,
+        n_iter: int = 32,
+    ):
+        self.hop_length = hop_length
+        self.sr = sample_rate
+        self.n_fft = n_fft
+        self.top_db = top_db
+        self.n_iter = n_iter
+        self.set_resolution(x_res, y_res)
+        self.audio = None
+
+    def set_resolution(self, x_res: int, y_res: int):
+        """Set resolution.
+
+        Args:
+            x_res (`int`): x resolution of spectrogram (time)
+            y_res (`int`): y resolution of spectrogram (frequency bins)
+        """
+        self.x_res = x_res
+        self.y_res = y_res
+        self.n_mels = self.y_res
+        self.slice_size = self.x_res * self.hop_length - 1
+
+    def load_audio(self, audio_file: str = None, raw_audio: np.ndarray = None):
+        """Load audio.
+
+        Args:
+            audio_file (`str`): must be a file on disk due to Librosa limitation or
+            raw_audio (`np.ndarray`): audio as numpy array
+        """
+        if audio_file is not None:
+            self.audio, _ = librosa.load(audio_file, mono=True, sr=self.sr)
+        else:
+            self.audio = raw_audio
+
+        # Pad with silence if necessary.
+        if len(self.audio) < self.x_res * self.hop_length:
+            self.audio = np.concatenate([self.audio, np.zeros((self.x_res * self.hop_length - len(self.audio),))])
+
+    def get_number_of_slices(self) -> int:
+        """Get number of slices in audio.
+
+        Returns:
+            `int`: number of spectograms audio can be sliced into
+        """
+        return len(self.audio) // self.slice_size
+
+    def get_audio_slice(self, slice: int = 0) -> np.ndarray:
+        """Get slice of audio.
+
+        Args:
+            slice (`int`): slice number of audio (out of get_number_of_slices())
+
+        Returns:
+            `np.ndarray`: audio as numpy array
+        """
+        return self.audio[self.slice_size * slice : self.slice_size * (slice + 1)]
+
+    def get_sample_rate(self) -> int:
+        """Get sample rate:
+
+        Returns:
+            `int`: sample rate of audio
+        """
+        return self.sr
+
+    def audio_slice_to_image(self, slice: int) -> Image.Image:
+        """Convert slice of audio to spectrogram.
+
+        Args:
+            slice (`int`): slice number of audio to convert (out of get_number_of_slices())
+
+        Returns:
+            `PIL Image`: grayscale image of x_res x y_res
+        """
+        S = librosa.feature.melspectrogram(
+            y=self.get_audio_slice(slice), sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, n_mels=self.n_mels
+        )
+        log_S = librosa.power_to_db(S, ref=np.max, top_db=self.top_db)
+        bytedata = (((log_S + self.top_db) * 255 / self.top_db).clip(0, 255) + 0.5).astype(np.uint8)
+        image = Image.fromarray(bytedata)
+        return image
+
+    def image_to_audio(self, image: Image.Image) -> np.ndarray:
+        """Converts spectrogram to audio.
+
+        Args:
+            image (`PIL Image`): x_res x y_res grayscale image
+
+        Returns:
+            audio (`np.ndarray`): raw audio
+        """
+        bytedata = np.frombuffer(image.tobytes(), dtype="uint8").reshape((image.height, image.width))
+        log_S = bytedata.astype("float") * self.top_db / 255 - self.top_db
+        S = librosa.db_to_power(log_S)
+        audio = librosa.feature.inverse.mel_to_audio(
+            S, sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, n_iter=self.n_iter
+        )
+        return audio
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Dict[str, Any] = None,
+        subfolder: Optional[str] = None,
+        return_unused_kwargs=False,
+        **kwargs,
+    ):
+        r"""
+        Instantiate a Mel class from a pre-defined JSON configuration file inside a directory or Hub repo.
+
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
+                      organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing the mel configurations saved using [`~Mel.save_pretrained`],
+                      e.g., `./my_model_directory/`.
+            subfolder (`str`, *optional*):
+                In case the relevant files are located inside a subfolder of the model repo (either remote in
+                huggingface.co or downloaded locally), you can specify the folder name here.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
+                Whether kwargs that are not consumed by the Python class should be returned or not.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `transformers-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+
+        <Tip>
+
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
+        use this method in a firewalled environment.
+
+        </Tip>
+
+        """
+        config, kwargs = cls.load_config(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            subfolder=subfolder,
+            return_unused_kwargs=True,
+            **kwargs,
+        )
+        return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+        """
+        Save a mel configuration object to the directory `save_directory`, so that it can be re-loaded using the
+        [`~Mel.from_pretrained`] class method.
+
+        Args:
+            save_directory (`str` or `os.PathLike`):
+                Directory where the configuration JSON file will be saved (will be created if it does not exist).
+        """
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+
+#-----------------------------------------------------------------------------#
+
+from math import acos, sin
+from typing import List, Tuple, Union
+
+import numpy as np
+import torch
+
+from PIL import Image
+
+from diffusers import AutoencoderKL, UNet2DConditionModel, DiffusionPipeline, DDIMScheduler, DDPMScheduler
+from diffusers.pipeline_utils import AudioPipelineOutput, BaseOutput, ImagePipelineOutput
+
+
 class AudioDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, unet: UNet2DConditionModel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
+    """
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        vqae ([`AutoencoderKL`]): Variational AutoEncoder for Latent Audio Diffusion or None
+        unet ([`UNet2DConditionModel`]): UNET model
+        mel ([`Mel`]): transform audio <-> spectrogram
+        scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
+    """
+
+    _optional_components = ["vqvae"]
+
+    def __init__(
+        self,
+        vqvae: AutoencoderKL,
+        unet: UNet2DConditionModel,
+        mel: Mel,
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
+    ):
         super().__init__()
-        self.register_modules(unet=unet, scheduler=scheduler)
+        self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
 
     def get_input_dims(self) -> Tuple:
         """Returns dimension of input image
 
         Returns:
-            Tuple: (height, width)
+            `Tuple`: (height, width)
         """
-        input_module = self.vqvae if hasattr(self, "vqvae") else self.unet
+        input_module = self.vqvae if self.vqvae is not None else self.unet
         # For backwards compatibility
         sample_size = (
             (input_module.sample_size, input_module.sample_size)
@@ -185,14 +411,13 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Returns default number of steps recommended for inference
 
         Returns:
-            int: number of steps
+            `int`: number of steps
         """
         return 50 if isinstance(self.scheduler, DDIMScheduler) else 1000
 
     @torch.no_grad()
     def __call__(
         self,
-        mel: Mel,
         batch_size: int = 1,
         audio_file: str = None,
         raw_audio: np.ndarray = None,
@@ -212,23 +437,22 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Generate random mel spectrogram from audio input and convert to audio.
 
         Args:
-            mel (Mel): instance of Mel class to perform image <-> audio
-            batch_size (int): number of samples to generate
-            audio_file (str): must be a file on disk due to Librosa limitation or
-            raw_audio (np.ndarray): audio as numpy array
-            slice (int): slice number of audio to convert
+            batch_size (`int`): number of samples to generate
+            audio_file (`str`): must be a file on disk due to Librosa limitation or
+            raw_audio (`np.ndarray`): audio as numpy array
+            slice (`int`): slice number of audio to convert
             start_step (int): step to start from
-            steps (int): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
-            generator (torch.Generator): random number generator or None
-            mask_start_secs (float): number of seconds of audio to mask (not generate) at start
-            mask_end_secs (float): number of seconds of audio to mask (not generate) at end
-            step_generator (torch.Generator): random number generator used to de-noise or None
-            eta (float): parameter between 0 and 1 used with DDIM scheduler
-            noise (torch.Tensor): noise tensor of shape (batch_size, 1, height, width) or None
-            return_dict (bool): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
+            steps (`int`): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
+            generator (`torch.Generator`): random number generator or None
+            mask_start_secs (`float`): number of seconds of audio to mask (not generate) at start
+            mask_end_secs (`float`): number of seconds of audio to mask (not generate) at end
+            step_generator (`torch.Generator`): random number generator used to de-noise or None
+            eta (`float`): parameter between 0 and 1 used with DDIM scheduler
+            noise (`torch.Tensor`): noise tensor of shape (batch_size, 1, height, width) or None
+            return_dict (`bool`): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
 
         Returns:
-            List[PIL Image]: mel spectrograms (float, List[np.ndarray]): sample rate and raw audios
+            `List[PIL Image]`: mel spectrograms (`float`, `List[np.ndarray]`): sample rate and raw audios
         """
 
         steps = steps or self.get_default_steps()
@@ -238,7 +462,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         if type(self.unet.sample_size) == int:
             self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
         input_dims = self.get_input_dims()
-        mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
+        self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
         if noise is None:
             noise = torch.randn(
                 (batch_size, self.unet.in_channels, self.unet.sample_size[0], self.unet.sample_size[1]),
@@ -249,15 +473,15 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         mask = None
 
         if audio_file is not None or raw_audio is not None:
-            mel.load_audio(audio_file, raw_audio)
-            input_image = mel.audio_slice_to_image(slice)
+            self.mel.load_audio(audio_file, raw_audio)
+            input_image = self.mel.audio_slice_to_image(slice)
             input_image = np.frombuffer(input_image.tobytes(), dtype="uint8").reshape(
                 (input_image.height, input_image.width)
             )
             input_image = (input_image / 255) * 2 - 1
             input_images = torch.tensor(input_image[np.newaxis, :, :], dtype=torch.float).to(self.device)
 
-            if hasattr(self, "vqvae"):
+            if self.vqvae is not None:
                 input_images = self.vqvae.encode(torch.unsqueeze(input_images, 0)).latent_dist.sample(
                     generator=generator
                 )[0]
@@ -266,7 +490,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(input_images, noise, self.scheduler.timesteps[start_step - 1])
 
-            pixels_per_second = self.unet.sample_size[1] * mel.get_sample_rate() / mel.x_res / mel.hop_length
+            pixels_per_second = (
+                self.unet.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
+            )
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(input_images, noise, torch.tensor(self.scheduler.timesteps[start_step:]))
@@ -289,7 +515,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 if mask_end > 0:
                     images[:, :, :, -mask_end:] = mask[:, step, :, -mask_end:]
 
-        if hasattr(self, "vqvae"):
+        if self.vqvae is not None:
             # 0.18215 was scaling factor used in training to ensure unit variance
             images = 1 / 0.18215 * images
             images = self.vqvae.decode(images)["sample"]
@@ -303,9 +529,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             else map(lambda _: Image.fromarray(_, mode="RGB").convert("L"), images)
         )
 
-        audios = list(map(lambda _: mel.image_to_audio(_), images))
+        audios = list(map(lambda _: self.mel.image_to_audio(_), images))
         if not return_dict:
-            return images, (mel.get_sample_rate(), audios)
+            return images, (self.mel.get_sample_rate(), audios)
 
         return BaseOutput(**AudioPipelineOutput(np.array(audios)[:, np.newaxis, :]), **ImagePipelineOutput(images))
 
@@ -314,11 +540,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Reverse step process: recover noisy image from generated image.
 
         Args:
-            images (List[PIL Image]): list of images to encode
-            steps (int): number of encoding steps to perform (defaults to 50)
+            images (`List[PIL Image]`): list of images to encode
+            steps (`int`): number of encoding steps to perform (defaults to 50)
 
         Returns:
-            np.ndarray: noise tensor of shape (batch_size, 1, height, width)
+            `np.ndarray`: noise tensor of shape (batch_size, 1, height, width)
         """
 
         # Only works with DDIM as this method is deterministic
@@ -351,24 +577,22 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Spherical Linear intERPolation
 
         Args:
-            x0 (torch.Tensor): first tensor to interpolate between
-            x1 (torch.Tensor): seconds tensor to interpolate between
-            alpha (float): interpolation between 0 and 1
+            x0 (`torch.Tensor`): first tensor to interpolate between
+            x1 (`torch.Tensor`): seconds tensor to interpolate between
+            alpha (`float`): interpolation between 0 and 1
 
         Returns:
-            torch.Tensor: interpolated tensor
+            `torch.Tensor`: interpolated tensor
         """
 
         theta = acos(torch.dot(torch.flatten(x0), torch.flatten(x1)) / torch.norm(x0) / torch.norm(x1))
         return sin((1 - alpha) * theta) * x0 / sin(theta) + sin(alpha * theta) * x1 / sin(theta)
 
 
-class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
-    def __init__(
-        self, unet: UNet2DConditionModel, scheduler: Union[DDIMScheduler, DDPMScheduler], vqvae: AutoencoderKL
-    ):
-        super().__init__(unet=unet, scheduler=scheduler)
-        self.register_modules(vqvae=vqvae)
+import diffusers
 
-    def __call__(self, *args, **kwargs):
-        return super().__call__(*args, **kwargs)
+diffusers.Mel = Mel
+setattr(diffusers, Mel.__name__, Mel)
+diffusers.AudioDiffusionPipeline = AudioDiffusionPipeline
+setattr(diffusers, AudioDiffusionPipeline.__name__, AudioDiffusionPipeline)
+diffusers.pipeline_utils.LOADABLE_CLASSES['diffusers']['Mel'] = ["save_pretrained", "from_pretrained"]

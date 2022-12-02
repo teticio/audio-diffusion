@@ -17,7 +17,8 @@ from datasets import load_from_disk, load_dataset
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.utilities.distributed import rank_zero_only
 
-from audiodiffusion.mel import Mel
+#from diffusers import Mel
+from audiodiffusion import Mel
 from audiodiffusion.utils import convert_ldm_to_hf_vae
 
 
