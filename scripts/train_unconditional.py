@@ -1,11 +1,8 @@
 # based on https://github.com/huggingface/diffusers/blob/main/examples/train_unconditional.py
 
-# TODO
-# Migrate to diffusers
-# from diffusers.hub_utils import Repository
-
 import argparse
 import os
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -14,13 +11,14 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
 from diffusers import (
-    #AudioDiffusionPipeline,
+    AudioDiffusionPipeline,
+    Mel,
     DDPMScheduler,
     UNet2DModel,
     DDIMScheduler,
     AutoencoderKL,
 )
-from diffusers.hub_utils import init_git_repo, push_to_hub
+from huggingface_hub import HfFolder, Repository, whoami
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from torchvision.transforms import (
@@ -32,10 +30,19 @@ import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
 
-#from diffusers import Mel, AudioDiffusionPipeline
-from audiodiffusion import Mel, AudioDiffusionPipeline
-
 logger = get_logger(__name__)
+
+
+def get_full_repo_name(model_id: str,
+                       organization: Optional[str] = None,
+                       token: Optional[str] = None):
+    if token is None:
+        token = HfFolder.get_token()
+    if organization is None:
+        username = whoami(token)["name"]
+        return f"{username}/{model_id}"
+    else:
+        return f"{organization}/{model_id}"
 
 
 def main(args):
@@ -94,8 +101,7 @@ def main(args):
         try:
             vqvae = AutoencoderKL.from_pretrained(args.vae)
         except EnvironmentError:
-            vqvae = AudioDiffusionPipeline.from_pretrained(
-                args.vae).vqvae
+            vqvae = AudioDiffusionPipeline.from_pretrained(args.vae).vqvae
         # Determine latent resolution
         with torch.no_grad():
             latent_resolution = (vqvae.encode(
@@ -169,7 +175,12 @@ def main(args):
     )
 
     if args.push_to_hub:
-        repo = init_git_repo(args, at_init=True)
+        if args.hub_model_id is None:
+            repo_name = get_full_repo_name(Path(args.output_dir).name,
+                                           token=args.hub_token)
+        else:
+            repo_name = args.hub_model_id
+        repo = Repository(args.output_dir, clone_from=repo_name)
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
@@ -265,24 +276,17 @@ def main(args):
                 pipeline = AudioDiffusionPipeline(
                     vqvae=vqvae,
                     unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model
-                    ),
+                        ema_model.averaged_model if args.use_ema else model),
                     mel=mel,
                     scheduler=noise_scheduler,
                 )
+                pipeline.save_pretrained(args.output_dir)
 
                 # save the model
                 if args.push_to_hub:
-                    try:
-                        push_to_hub(
-                            args,
-                            pipeline,
-                            repo,
-                            commit_message=f"Epoch {epoch}",
-                            blocking=False,
-                        )
-                    except NameError:  # current version of diffusers has a little bug
-                        pass
+                    repo.push_to_hub(commit_message=f"Epoch {epoch}",
+                                     blocking=False,
+                                     auto_lfs_prune=True)
                 else:
                     pipeline.save_pretrained(output_dir)
 
@@ -290,11 +294,10 @@ def main(args):
                 generator = torch.Generator(
                     device=clean_images.device).manual_seed(42)
                 # run pipeline in inference (sample random noise and denoise)
-                images, (sample_rate, audios) = pipeline(
-                    generator=generator,
-                    batch_size=args.eval_batch_size,
-                    return_dict=False
-                )
+                images, (sample_rate,
+                         audios) = pipeline(generator=generator,
+                                            batch_size=args.eval_batch_size,
+                                            return_dict=False)
 
                 # denormalize the images and save to tensorboard
                 images = np.array([
@@ -390,8 +393,5 @@ if __name__ == "__main__":
         raise ValueError(
             "You must specify either a dataset name from the hub or a train data directory."
         )
-    if args.dataset_name is not None and args.dataset_name == args.hub_model_id:
-        raise ValueError(
-            "The local dataset name must be different from the hub model id.")
 
     main(args)
