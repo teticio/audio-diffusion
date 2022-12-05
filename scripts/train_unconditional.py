@@ -11,8 +11,6 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_from_disk, load_dataset
 from diffusers import (
-    AudioDiffusionPipeline,
-    Mel,
     DDPMScheduler,
     UNet2DModel,
     DDIMScheduler,
@@ -29,6 +27,7 @@ from torchvision.transforms import (
 import numpy as np
 from tqdm.auto import tqdm
 from librosa.util import normalize
+from audiodiffusion import AudioDiffusionPipeline, Mel
 
 logger = get_logger(__name__)
 
