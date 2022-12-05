@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from librosa.beat import beat_track
 #from diffusers import DiffusionPipeline
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 
 class AudioDiffusion:
@@ -589,10 +589,17 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         return sin((1 - alpha) * theta) * x0 / sin(theta) + sin(alpha * theta) * x1 / sin(theta)
 
 
+import sys
 import diffusers
 
-diffusers.Mel = Mel
-setattr(diffusers, Mel.__name__, Mel)
+class audio_diffusion():
+    __name__ = 'audio_diffusion'
+    pass
+
+
+sys.modules['audio_diffusion'] = audio_diffusion
+setattr(audio_diffusion, Mel.__name__, Mel)
 diffusers.AudioDiffusionPipeline = AudioDiffusionPipeline
 setattr(diffusers, AudioDiffusionPipeline.__name__, AudioDiffusionPipeline)
-diffusers.pipeline_utils.LOADABLE_CLASSES['diffusers']['Mel'] = ["save_pretrained", "from_pretrained"]
+diffusers.pipeline_utils.LOADABLE_CLASSES['audio_diffusion'] = {}
+diffusers.pipeline_utils.LOADABLE_CLASSES['audio_diffusion']['Mel'] = ["save_pretrained", "from_pretrained"]
