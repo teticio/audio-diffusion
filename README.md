@@ -23,6 +23,8 @@ Go to https://soundcloud.com/teticio2/sets/audio-diffusion-loops for more exampl
 ---
 #### Updates
 
+**5/12/2022** 🤗 Exciting news! `AudioDiffusionPipeline` has been migrated to the Hugging Face `diffusers` package so that it is even easier for others to use and contribute.
+
 **2/12/2022**. Added Mel to pipeline and updated the pretrained models to save Mel config (they are now no longer compatible with previous versions of this repo). It is relatively straightforward to migrate previously trained models to the new format (see https://huggingface.co/teticio/audio-diffusion-256).
 
 **7/11/2022**. Added pre-trained latent audio diffusion models [teticio/latent-audio-diffusion-256](https://huggingface.co/teticio/latent-audio-diffusion-256) and [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256). You can use the pre-trained VAE to train your own latent diffusion models on a different set of audio files.
@@ -62,10 +64,18 @@ You can play around with some pre-trained models on [Google Colab](https://colab
 
 ## Generate Mel spectrogram dataset from directory of audio files
 
-#### Install
+#### Install from GitHub (includes training scripts)
 
 ```bash
+git clone https://github.com/teticio/audio-diffusion.git
+cd audio-diffusion
 pip install .
+```
+
+#### Install from PyPI
+
+```bash
+pip install audiodiffusion
 ```
 
 #### Training can be run with Mel spectrograms of resolution 64x64 on a single commercial grade GPU (e.g. RTX 2080 Ti). The `hop_length` should be set to 1024 for better results

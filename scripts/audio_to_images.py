@@ -7,9 +7,8 @@ import argparse
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+from diffusers.pipelines.audio_diffusion import Mel
 from datasets import Dataset, DatasetDict, Features, Image, Value
-
-from audiodiffusion import Mel
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger('audio_to_images')

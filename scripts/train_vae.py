@@ -14,12 +14,10 @@ from ldm.util import instantiate_from_config
 from pytorch_lightning.trainer import Trainer
 from torch.utils.data import DataLoader, Dataset
 from datasets import load_from_disk, load_dataset
+from diffusers.pipelines.audio_diffusion import Mel
+from audiodiffusion.utils import convert_ldm_to_hf_vae
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.utilities.distributed import rank_zero_only
-
-#from diffusers import Mel
-from audiodiffusion import Mel
-from audiodiffusion.utils import convert_ldm_to_hf_vae
 
 
 class AudioDiffusion(Dataset):
