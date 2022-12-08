@@ -2,10 +2,8 @@
 
 import argparse
 import os
+from pathlib import Path
 from typing import Optional
-
-import torch
-import torch.nn.functional as F
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -18,17 +16,19 @@ from diffusers import (
     AutoencoderKL,
 )
 from diffusers.pipelines.audio_diffusion import Mel
-from huggingface_hub import HfFolder, Repository, whoami
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
+from huggingface_hub import HfFolder, Repository, whoami
+from librosa.util import normalize
+import numpy as np
+import torch
+import torch.nn.functional as F
 from torchvision.transforms import (
     Compose,
     Normalize,
     ToTensor,
 )
-import numpy as np
 from tqdm.auto import tqdm
-from librosa.util import normalize
 
 logger = get_logger(__name__)
 
