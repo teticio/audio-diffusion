@@ -176,11 +176,11 @@ def main(args):
 
     if args.push_to_hub:
         if args.hub_model_id is None:
-            repo_name = get_full_repo_name(Path(args.output_dir).name,
+            repo_name = get_full_repo_name(Path(output_dir).name,
                                            token=args.hub_token)
         else:
             repo_name = args.hub_model_id
-        repo = Repository(args.output_dir, clone_from=repo_name)
+        repo = Repository(output_dir, clone_from=repo_name)
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
@@ -270,9 +270,9 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if (
+            if (epoch + 1) % args.save_model_epochs == 0 or (
                     epoch + 1
-            ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+            ) % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 pipeline = AudioDiffusionPipeline(
                     vqvae=vqvae,
                     unet=accelerator.unwrap_model(
@@ -280,15 +280,17 @@ def main(args):
                     mel=mel,
                     scheduler=noise_scheduler,
                 )
-                pipeline.save_pretrained(args.output_dir)
+
+            if (
+                    epoch + 1
+            ) % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+                pipeline.save_pretrained(output_dir)
 
                 # save the model
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}",
                                      blocking=False,
                                      auto_lfs_prune=True)
-                else:
-                    pipeline.save_pretrained(output_dir)
 
             if (epoch + 1) % args.save_images_epochs == 0:
                 generator = torch.Generator(
