@@ -18,7 +18,7 @@ model:
     ddconfig:
       double_z: True
       z_channels: 1  # must = embed_dim due to HF limitation
-      resolution: 256
+      resolution: 256  # overriden by input image size
       in_channels: 1
       out_ch: 1
       ch: 128

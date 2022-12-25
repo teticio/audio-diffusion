@@ -2,33 +2,28 @@
 
 import argparse
 import os
+import pickle
+import random
 from pathlib import Path
 from typing import Optional
 
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from datasets import load_from_disk, load_dataset
-from diffusers import (
-    AudioDiffusionPipeline,
-    DDPMScheduler,
-    UNet2DModel,
-    DDIMScheduler,
-    AutoencoderKL,
-)
-from diffusers.pipelines.audio_diffusion import Mel
-from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
-from huggingface_hub import HfFolder, Repository, whoami
-from librosa.util import normalize
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torchvision.transforms import (
-    Compose,
-    Normalize,
-    ToTensor,
-)
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from datasets import load_dataset, load_from_disk
+from diffusers import (AutoencoderKL, DDIMScheduler, DDPMScheduler,
+                       UNet2DConditionModel, UNet2DModel)
+from diffusers.optimization import get_scheduler
+from diffusers.pipelines.audio_diffusion import Mel
+from diffusers.training_utils import EMAModel
+from huggingface_hub import HfFolder, Repository, whoami
+from librosa.util import normalize
+from torchvision.transforms import Compose, Normalize, ToTensor
 from tqdm.auto import tqdm
+
+from audiodiffusion.pipeline_audio_diffusion import AudioDiffusionPipeline
 
 logger = get_logger(__name__)
 
@@ -90,11 +85,17 @@ def main(args):
             ]
         else:
             images = [augmentations(image) for image in examples["image"]]
+        if args.encodings is not None:
+            encoding = [encodings[file] for file in examples["audio_file"]]
+            return {"input": images, "encoding": encoding}
         return {"input": images}
 
     dataset.set_transform(transforms)
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True)
+
+    if args.encodings is not None:
+        encodings = pickle.load(open(args.encodings, "rb"))
 
     vqvae = None
     if args.vae is not None:
@@ -104,9 +105,9 @@ def main(args):
             vqvae = AudioDiffusionPipeline.from_pretrained(args.vae).vqvae
         # Determine latent resolution
         with torch.no_grad():
-            latent_resolution = (vqvae.encode(
+            latent_resolution = vqvae.encode(
                 torch.zeros((1, 1) +
-                            resolution)).latent_dist.sample().shape[2:])
+                            resolution)).latent_dist.sample().shape[2:]
 
     if args.from_pretrained is not None:
         pipeline = AudioDiffusionPipeline.from_pretrained(args.from_pretrained)
@@ -114,32 +115,58 @@ def main(args):
         model = pipeline.unet
         if hasattr(pipeline, "vqvae"):
             vqvae = pipeline.vqvae
+
     else:
-        model = UNet2DModel(
-            sample_size=resolution if vqvae is None else latent_resolution,
-            in_channels=1
-            if vqvae is None else vqvae.config["latent_channels"],
-            out_channels=1
-            if vqvae is None else vqvae.config["latent_channels"],
-            layers_per_block=2,
-            block_out_channels=(128, 128, 256, 256, 512, 512),
-            down_block_types=(
-                "DownBlock2D",
-                "DownBlock2D",
-                "DownBlock2D",
-                "DownBlock2D",
-                "AttnDownBlock2D",
-                "DownBlock2D",
-            ),
-            up_block_types=(
-                "UpBlock2D",
-                "AttnUpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-            ),
-        )
+        if args.encodings is None:
+            model = UNet2DModel(
+                sample_size=resolution if vqvae is None else latent_resolution,
+                in_channels=1
+                if vqvae is None else vqvae.config["latent_channels"],
+                out_channels=1
+                if vqvae is None else vqvae.config["latent_channels"],
+                layers_per_block=2,
+                block_out_channels=(128, 128, 256, 256, 512, 512),
+                down_block_types=(
+                    "DownBlock2D",
+                    "DownBlock2D",
+                    "DownBlock2D",
+                    "DownBlock2D",
+                    "AttnDownBlock2D",
+                    "DownBlock2D",
+                ),
+                up_block_types=(
+                    "UpBlock2D",
+                    "AttnUpBlock2D",
+                    "UpBlock2D",
+                    "UpBlock2D",
+                    "UpBlock2D",
+                    "UpBlock2D",
+                ),
+            )
+
+        else:
+            model = UNet2DConditionModel(
+                sample_size=resolution if vqvae is None else latent_resolution,
+                in_channels=1
+                if vqvae is None else vqvae.config["latent_channels"],
+                out_channels=1
+                if vqvae is None else vqvae.config["latent_channels"],
+                layers_per_block=2,
+                block_out_channels=(128, 256, 512, 512),
+                down_block_types=(
+                    "CrossAttnDownBlock2D",
+                    "CrossAttnDownBlock2D",
+                    "CrossAttnDownBlock2D",
+                    "DownBlock2D",
+                ),
+                up_block_types=(
+                    "UpBlock2D",
+                    "CrossAttnUpBlock2D",
+                    "CrossAttnUpBlock2D",
+                    "CrossAttnUpBlock2D",
+                ),
+                cross_attention_dim=list(encodings.values())[0].shape[-1],
+            )
 
     if args.scheduler == "ddpm":
         noise_scheduler = DDPMScheduler(
@@ -240,7 +267,11 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps)["sample"]
+                if args.encodings is not None:
+                    noise_pred = model(noisy_images, timesteps,
+                                       batch["encoding"])["sample"]
+                else:
+                    noise_pred = model(noisy_images, timesteps)["sample"]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -270,9 +301,9 @@ def main(args):
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if (epoch + 1) % args.save_model_epochs == 0 or (
-                    epoch + 1
-            ) % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            if ((epoch + 1) % args.save_model_epochs == 0
+                    or (epoch + 1) % args.save_images_epochs == 0
+                    or epoch == args.num_epochs - 1):
                 pipeline = AudioDiffusionPipeline(
                     vqvae=vqvae,
                     unet=accelerator.unwrap_model(
@@ -288,18 +319,32 @@ def main(args):
 
                 # save the model
                 if args.push_to_hub:
-                    repo.push_to_hub(commit_message=f"Epoch {epoch}",
-                                     blocking=False,
-                                     auto_lfs_prune=True)
+                    repo.push_to_hub(
+                        commit_message=f"Epoch {epoch}",
+                        blocking=False,
+                        auto_lfs_prune=True,
+                    )
 
             if (epoch + 1) % args.save_images_epochs == 0:
                 generator = torch.Generator(
                     device=clean_images.device).manual_seed(42)
+
+                if args.encodings is not None:
+                    random.seed(42)
+                    encoding = torch.stack(
+                        random.sample(list(encodings.values()),
+                                      args.eval_batch_size)).to(
+                                          clean_images.device)
+                else:
+                    encoding = None
+
                 # run pipeline in inference (sample random noise and denoise)
-                images, (sample_rate,
-                         audios) = pipeline(generator=generator,
-                                            batch_size=args.eval_batch_size,
-                                            return_dict=False)
+                images, (sample_rate, audios) = pipeline(
+                    generator=generator,
+                    batch_size=args.eval_batch_size,
+                    return_dict=False,
+                    encoding=encoding,
+                )
 
                 # denormalize the images and save to tensorboard
                 images = np.array([
@@ -384,6 +429,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="pretrained VAE model for latent diffusion",
+    )
+    parser.add_argument(
+        "--encodings",
+        type=str,
+        default=None,
+        help="picked dictionary mapping audio_file to encoding",
     )
 
     args = parser.parse_args()

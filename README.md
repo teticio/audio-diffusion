@@ -23,7 +23,9 @@ Go to https://soundcloud.com/teticio2/sets/audio-diffusion-loops for more exampl
 ---
 #### Updates
 
-**5/12/2022** 🤗 Exciting news! `AudioDiffusionPipeline` has been migrated to the Hugging Face `diffusers` package so that it is even easier for others to use and contribute.
+**25/12/2022**. Now it is possible to train models conditional on an encoding (of text or audio, for example). See the section on Conditional Audio Generation below.
+
+**5/12/2022**. 🤗 Exciting news! `AudioDiffusionPipeline` has been migrated to the Hugging Face `diffusers` package so that it is even easier for others to use and contribute.
 
 **2/12/2022**. Added Mel to pipeline and updated the pretrained models to save Mel config (they are now no longer compatible with previous versions of this repo). It is relatively straightforward to migrate previously trained models to the new format (see https://huggingface.co/teticio/audio-diffusion-256).
 
@@ -58,7 +60,8 @@ You can play around with some pre-trained models on [Google Colab](https://colab
 | [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/teticio/audio-diffusion-instrumental-hiphop-256) | [teticio/audio-diffusion-instrumental-hiphop-256](https://huggingface.co/datasets/teticio/audio-diffusion-instrumental-hiphop-256) | Instrumental Hip Hop music |
 | [teticio/audio-diffusion-ddim-256](https://huggingface.co/teticio/audio-diffusion-ddim-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | De-noising Diffusion Implicit Model |
 | [teticio/latent-audio-diffusion-256](https://huggingface.co/teticio/latent-audio-diffusion-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | Latent Audio Diffusion model |
-| [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | Latent Audio Diffusion De-noising Diffusion Implicit Model |
+| [teticio/latent-audio-diffusion-ddim-256](https://huggingface.co/teticio/latent-audio-diffusion-ddim-256) | [teticio/audio-diffusion-256](https://huggingface.co/datasets/teticio/audio-diffusion-256) | Latent Audio Diffusion Implicit Model |
+| [teticio/conditional-latent-audio-diffusion-512](https://huggingface.co/teticio/latent-audio-diffusion-512) | [teticio/audio-diffusion-512](https://huggingface.co/datasets/teticio/audio-diffusion-512) | Conditional Latent Audio Diffusion Model |
 
 ---
 
@@ -106,7 +109,7 @@ Note that the default `sample_rate` is 22050 and audios will be resampled if the
 
 ```bash
 accelerate launch --config_file config/accelerate_local.yaml \
-scripts/train_unconditional.py \
+scripts/train_unet.py \
 --dataset_name data/audio-diffusion-64 \
 --hop_length 1024 \
 --output_dir models/ddpm-ema-audio-64 \
@@ -122,7 +125,7 @@ scripts/train_unconditional.py \
 
 ```bash
 accelerate launch --config_file config/accelerate_local.yaml \
-scripts/train_unconditional.py \
+scripts/train_unet.py \
 --dataset_name teticio/audio-diffusion-256 \
 --output_dir models/audio-diffusion-256 \
 --num_epochs 100 \
@@ -141,7 +144,7 @@ scripts/train_unconditional.py \
 
 ```bash
 accelerate launch --config_file config/accelerate_sagemaker.yaml \
-scripts/train_unconditional.py \
+scripts/train_unet.py \
 --dataset_name teticio/audio-diffusion-256 \
 --output_dir models/ddpm-ema-audio-256 \
 --train_batch_size 16 \
@@ -200,3 +203,33 @@ accelerate launch ...
 ...
 --vae models/autoencoder-kl
 ```
+
+## Conditional Audio Generation
+
+We can generate audio conditional on a text prompt - or indeed anything which can be encoded into a bunch of numbers - much like DALL-E2 and Midjourney. It is generally harder to find good quality datasets of audios together with descriptions, although the people behind the dataset used to train Midjourney are making some very interesting progress [here](https://github.com/LAION-AI/audio-dataset). I have chosen to encode the audio directly instead based on "how it sounds", using a [model which I trained on hundreds of thousands of Spotify playlists](https://github.com/teticio/Deej-AI). To encode an audio into a 100 dimensional vector
+
+```python
+from diffusers import Mel
+from audiodiffusion.audio_encoder import AudioEncoder
+
+audio_encoder = AudioEncoder.from_pretrained("teticio/audio-encoder")
+audio_encoder.encode(['/home/teticio/Music/liked/Agua Re - Holy Dance - Large Sound Mix.mp3'])
+```
+
+One you have prepared a dataset, you can encode the audio files with this script
+
+```bash
+python scripts/encode_audio \
+--dataset_name teticio/audio-diffusion-256 \
+--out_file data/encodings.p
+```
+
+Then you can train a model with
+
+```bash
+accelerate launch ...
+...
+--encodings data/encodings.p
+```
+
+When generating audios, you will need to pass an `encodings` Tensor. See the [`conditional_generation.ipynb`](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/conditional_generation.ipynb) notebook for an example that uses encodings of Spotify track previews to influence the generation.
