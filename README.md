@@ -209,7 +209,6 @@ accelerate launch ...
 We can generate audio conditional on a text prompt - or indeed anything which can be encoded into a bunch of numbers - much like DALL-E2, Midjourney and Stable Diffusion. It is generally harder to find good quality datasets of audios together with descriptions, although the people behind the dataset used to train Stable Diffusion are making some very interesting progress [here](https://github.com/LAION-AI/audio-dataset). I have chosen to encode the audio directly instead based on "how it sounds", using a [model which I trained on hundreds of thousands of Spotify playlists](https://github.com/teticio/Deej-AI). To encode an audio into a 100 dimensional vector
 
 ```python
-from diffusers import Mel
 from audiodiffusion.audio_encoder import AudioEncoder
 
 audio_encoder = AudioEncoder.from_pretrained("teticio/audio-encoder")
