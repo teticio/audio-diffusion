@@ -21,12 +21,11 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, Mel, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, UNet2DConditionModel
 from diffusers.pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from PIL import Image
 
 from .mel import Mel
-
 
 class AudioDiffusionPipeline(DiffusionPipeline):
     """
