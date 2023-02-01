@@ -21,8 +21,16 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, UNet2DConditionModel
-from diffusers.pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
+from diffusers import (
+    AudioPipelineOutput,
+    AutoencoderKL,
+    DDIMScheduler,
+    DDPMScheduler,
+    DiffusionPipeline,
+    ImagePipelineOutput,
+    UNet2DConditionModel,
+)
+from diffusers.utils import BaseOutput
 from PIL import Image
 
 from .mel import Mel
