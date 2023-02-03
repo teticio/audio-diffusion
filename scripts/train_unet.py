@@ -304,10 +304,12 @@ def main(args):
             if ((epoch + 1) % args.save_model_epochs == 0
                     or (epoch + 1) % args.save_images_epochs == 0
                     or epoch == args.num_epochs - 1):
+                unet = accelerator.unwrap_model(model)
+                if args.use_ema:
+                    ema_model.copy_to(unet.parameters())
                 pipeline = AudioDiffusionPipeline(
                     vqvae=vqvae,
-                    unet=accelerator.unwrap_model(
-                        ema_model.averaged_model if args.use_ema else model),
+                    unet=unet,
                     mel=mel,
                     scheduler=noise_scheduler,
                 )
