@@ -215,7 +215,7 @@ audio_encoder = AudioEncoder.from_pretrained("teticio/audio-encoder")
 audio_encoder.encode(['/home/teticio/Music/liked/Agua Re - Holy Dance - Large Sound Mix.mp3'])
 ```
 
-One you have prepared a dataset, you can encode the audio files with this script
+Once you have prepared a dataset, you can encode the audio files with this script
 
 ```bash
 python scripts/encode_audio \
