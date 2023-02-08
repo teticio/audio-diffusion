@@ -52,8 +52,9 @@ def main(args):
 
     if args.dataset_name is not None:
         if os.path.exists(args.dataset_name):
-            dataset = load_from_disk(args.dataset_name,
-                                     storage_options = args.dataset_config_name)["train"]
+            dataset = load_from_disk(
+                args.dataset_name,
+                storage_options=args.dataset_config_name)["train"]
         else:
             dataset = load_dataset(
                 args.dataset_name,
