@@ -30,6 +30,8 @@ class AudioDiffusion:
         self.pipe = AudioDiffusionPipeline.from_pretrained(self.model_id)
         if cuda:
             self.pipe.to("cuda")
+        else:
+            self.pipe.to("mps")
         self.progress_bar = progress_bar or (lambda _: _)
 
     def generate_spectrogram_and_audio(

@@ -25,6 +25,10 @@ from tqdm.auto import tqdm
 
 from audiodiffusion.pipeline_audio_diffusion import AudioDiffusionPipeline
 
+import scipy.io.wavfile as wavfile
+from PIL import Image
+
+
 logger = get_logger(__name__)
 
 
@@ -72,6 +76,9 @@ def main(args):
         )
     # Determine image resolution
     resolution = dataset[0]["image"].height, dataset[0]["image"].width
+    # print(dataset[0]["image"])
+    im = dataset[0]["image"]
+    im.save(f"cfirst_image.png")
 
     augmentations = Compose([
         ToTensor(),
@@ -213,6 +220,8 @@ def main(args):
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
+    
+    print("trackers", accelerator.trackers)
 
     mel = Mel(
         x_res=resolution[1],
@@ -348,6 +357,10 @@ def main(args):
                     return_dict=False,
                     encoding=encoding,
                 )
+                output_path = "last_gen_image.png"
+                images[0].save(output_path)
+                audio_file = "last_gen_audio.wav"
+                wavfile.write(audio_file, sample_rate, audios[0])
 
                 # denormalize the images and save to tensorboard
                 images = np.array([
@@ -355,6 +368,7 @@ def main(args):
                         (len(image.getbands()), image.height, image.width))
                     for image in images
                 ])
+
                 accelerator.trackers[0].writer.add_images(
                     "test_samples", images, epoch)
                 for _, audio in enumerate(audios):

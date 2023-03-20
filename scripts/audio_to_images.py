@@ -13,6 +13,15 @@ from tqdm.auto import tqdm
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("audio_to_images")
 
+def get_train_audio_files(metadata_path: str, base_path: str = ""):
+    df = pd.read_csv(metadata_path)
+
+    paths = []
+    for _, row in df.iterrows():
+        paths.append(row['path'].split("data/")[-1])
+    return paths
+
+
 
 def main(args):
     mel = Mel(
@@ -22,6 +31,8 @@ def main(args):
         sample_rate=args.sample_rate,
         n_fft=args.n_fft,
     )
+    metadata_path = args.metadata_path
+    
     os.makedirs(args.output_dir, exist_ok=True)
     audio_files = [
         os.path.join(root, file)
@@ -29,6 +40,12 @@ def main(args):
         for file in files
         if re.search("\.(mp3|wav|m4a)$", file, re.IGNORECASE)
     ]
+    if metadata_path:
+        print("sample filename", audio_files[-1])
+        train_files = get_train_audio_files(metadata_path=metadata_path)
+        print("sample train filename", train_files[-1])
+        audio_files = [file for file in audio_files if file.split("data/")[-1] in train_files]
+
     examples = []
     try:
         for audio_file in tqdm(audio_files):
@@ -93,6 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("--push_to_hub", type=str, default=None)
     parser.add_argument("--sample_rate", type=int, default=22050)
     parser.add_argument("--n_fft", type=int, default=2048)
+    parser.add_argument("--metadata_path", type=str, default=None)
     args = parser.parse_args()
 
     if args.input_dir is None:
