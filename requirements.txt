@@ -8,3 +8,5 @@ gradio
 streamlit
 tensorboard
 accelerate
+torchvision
+transformers
