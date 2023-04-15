@@ -256,7 +256,7 @@ def main(args):
             # Sample a random timestep for each image
             timesteps = torch.randint(
                 0,
-                noise_scheduler.num_train_timesteps,
+                noise_scheduler.config.num_train_timesteps,
                 (bsz, ),
                 device=clean_images.device,
             ).long()
