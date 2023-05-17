@@ -132,7 +132,7 @@ class Mel(ConfigMixin, SchedulerMixin):
         """
         return self.sr
 
-    def audio_slice_to_image(self, slice: int) -> Image.Image:
+    def audio_slice_to_image(self, slice: int, ref=np.max) -> Image.Image:
         """Convert slice of audio to spectrogram.
 
         Args:
@@ -144,7 +144,7 @@ class Mel(ConfigMixin, SchedulerMixin):
         S = librosa.feature.melspectrogram(
             y=self.get_audio_slice(slice), sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, n_mels=self.n_mels
         )
-        log_S = librosa.power_to_db(S, ref=np.max, top_db=self.top_db)
+        log_S = librosa.power_to_db(S, ref=ref, top_db=self.top_db)
         bytedata = (((log_S + self.top_db) * 255 / self.top_db).clip(0, 255) + 0.5).astype(np.uint8)
         image = Image.fromarray(bytedata)
         return image
