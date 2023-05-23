@@ -82,7 +82,7 @@ class AudioEncoder(ModelMixin, ConfigMixin):
         return x
 
     @torch.no_grad()
-    def encode(self, audio_files):
+    def encode(self, audio_files, pool="average"):
         self.eval()
         y = []
         for audio_file in audio_files:
@@ -97,7 +97,13 @@ class AudioEncoder(ModelMixin, ConfigMixin):
                 )
                 for slice in range(self.mel.get_number_of_slices())
             ]
-            y += [torch.mean(self(torch.Tensor(x)), dim=0)]
+            y += [self(torch.Tensor(x))]
+            if pool == "average":
+                y[-1] = torch.mean(y[-1], dim=0)
+            elif pool == "max":
+                y[-1] = torch.max(y[-1], dim=0)
+            else:
+                assert pool is None, f"Unknown pooling method {pool}"
         return torch.stack(y)
 
 
