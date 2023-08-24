@@ -36,7 +36,8 @@ def main(args):
                 mel.load_audio(audio_file)
             except KeyboardInterrupt:
                 raise
-            except:
+            except Exception as e:
+                print(e)
                 continue
             for slice in range(mel.get_number_of_slices()):
                 image = mel.audio_slice_to_image(slice)
