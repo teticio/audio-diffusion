@@ -17,6 +17,7 @@
 
 
 import warnings
+from typing import Callable, Union
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
@@ -132,11 +133,12 @@ class Mel(ConfigMixin, SchedulerMixin):
         """
         return self.sr
 
-    def audio_slice_to_image(self, slice: int, ref=np.max) -> Image.Image:
+    def audio_slice_to_image(self, slice: int, ref: Union[float, Callable] = np.max) -> Image.Image:
         """Convert slice of audio to spectrogram.
 
         Args:
             slice (`int`): slice number of audio to convert (out of get_number_of_slices())
+            ref (`Union[float, Callable]`): reference value for spectrogram
 
         Returns:
             `PIL Image`: grayscale image of x_res x y_res
