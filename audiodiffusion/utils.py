@@ -127,7 +127,25 @@ def conv_attn_to_linear(checkpoint):
         elif "proj_attn.weight" in key:
             if checkpoint[key].ndim > 2:
                 checkpoint[key] = checkpoint[key][:, :, 0]
+def rename_state_dict_keys(state_dict):
+    mapping = {
+        "query.weight": "to_q.weight",
+        "query.bias": "to_q.bias",
+        "key.weight": "to_k.weight",
+        "key.bias": "to_k.bias",
+        "value.weight": "to_v.weight",
+        "value.bias": "to_v.bias",
+        "proj_attn.weight": "to_out.0.weight",
+        "proj_attn.bias": "to_out.0.bias"
+    }
 
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        for old_key, new_key in mapping.items():
+            key = key.replace(old_key, new_key)
+        new_state_dict[key] = value
+
+    return new_state_dict
 
 def create_vae_diffusers_config(original_config):
     """
@@ -297,7 +315,13 @@ def convert_ldm_to_hf_vae(ldm_checkpoint, ldm_config, hf_checkpoint, sample_size
     # Convert the VAE model.
     vae_config = create_vae_diffusers_config(ldm_config)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
-
+    
+    # Rename the keys in the state_dict
+    converted_vae_checkpoint = rename_state_dict_keys(converted_vae_checkpoint)
+    
+    # Instantiate the model and load the state dictionary
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
+    
+    # Save the converted model
     vae.save_pretrained(hf_checkpoint)
