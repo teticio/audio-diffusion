@@ -87,7 +87,7 @@ def main(args):
         else:
             images = [augmentations(image) for image in examples["image"]]
         if args.encodings is not None:
-            encoding = [encodings[file][slice.item()] for file in zip(examples["audio_file"], examples["slice"])]
+            encoding = [encodings[file] for file in examples["audio_file"]]
             return {"input": images, "encoding": encoding}
         return {"input": images}
 
