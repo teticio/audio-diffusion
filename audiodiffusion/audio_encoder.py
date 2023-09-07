@@ -105,7 +105,7 @@ class AudioEncoder(ModelMixin, ConfigMixin):
             else:
                 assert pool is None, f"Unknown pooling method {pool}"
         return torch.stack(y)
-    def encode_image(self, image_tensor):
+    def encode_image(self, image_tensor)
         self.eval()  # set the model to evaluation mode
         return self.forward(image_tensor)
 
