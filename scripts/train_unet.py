@@ -166,7 +166,7 @@ def main(args):
                     "CrossAttnUpBlock2D",
                     "CrossAttnUpBlock2D",
                 ),
-                cross_attention_dim=next(iter(next(iter(encodings.values())).values())).shape[-1],
+                cross_attention_dim=list(encodings.values())[0].shape[-1],
             )
 
     if args.scheduler == "ddpm":
