@@ -26,7 +26,6 @@ warnings.filterwarnings("ignore")
 
 import numpy as np  # noqa: E402
 
-
 try:
     import librosa  # noqa: E402
 

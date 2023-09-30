@@ -40,7 +40,7 @@ def main(args):
                 print(e)
                 continue
             for slice in range(mel.get_number_of_slices()):
-                image = mel.audio_slice_to_image(slice)
+                image = mel.audio_slice_to_image(slice, ref=args.ref)
                 assert image.width == args.resolution[0] and image.height == args.resolution[1], "Wrong resolution"
                 # skip completely silent slices
                 if all(np.frombuffer(image.tobytes(), dtype=np.uint8) == 255):
@@ -94,6 +94,12 @@ if __name__ == "__main__":
     parser.add_argument("--push_to_hub", type=str, default=None)
     parser.add_argument("--sample_rate", type=int, default=22050)
     parser.add_argument("--n_fft", type=int, default=2048)
+    parser.add_argument(
+        "--ref",
+        type=float,
+        default=None,
+        help="Reference value for normalization. Defaults to np.max but a good value is n_fft/2.",
+    )
     args = parser.parse_args()
 
     if args.input_dir is None:
@@ -110,5 +116,8 @@ if __name__ == "__main__":
         except ValueError:
             raise ValueError("Resolution must be a tuple of two integers or a single integer.")
     assert isinstance(args.resolution, tuple)
+
+    if args.ref is None:
+        args.ref = np.max
 
     main(args)
