@@ -18,19 +18,17 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from diffusers import (
-    AutoencoderKL,
     ControlNetModel,
-    DDPMScheduler,
     AudioDiffusionPipeline,
     UNet2DConditionModel,
-    UniPCMultistepScheduler,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import create_repo, upload_folder
+from librosa.util import normalize
 from packaging import version
 from PIL import Image
 from torchvision import transforms
@@ -63,14 +61,13 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
 
     pipeline = AudioDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        vae=vae,
+        vqvae=vae,
         unet=unet,
-        # controlnet=controlnet,
+        controlnet=controlnet,
         torch_dtype=weight_dtype,
     )
-    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)  ###
     pipeline = pipeline.to(accelerator.device)
-    pipeline.set_progress_bar_config(disable=True)
+    #pipeline.set_progress_bar_config(disable=True)
 
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
@@ -82,49 +79,62 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
 
     image_logs = []
     images = []
+    controlnet_images = []
+    audios = []
+    controlnet_audios = []
 
     for _ in range(args.num_validation_images):
         with torch.autocast("cuda"):
-            image = pipeline(generator=generator).images[0]
+            controlnet_image, (sr, controlnet_audio) = pipeline(generator=generator, return_dict=False)
+            image, (sr, audio) = pipeline(
+                generator=generator,
+                controlnet_conditioning_scale=1.0,
+                controlnet_image=controlnet_image[0],
+                return_dict=False,
+            )
 
-        images.append(image)
+        images.append(image[0])
+        controlnet_images.append(controlnet_image[0])
+        audios.append(audio[0])
+        controlnet_audios.append(controlnet_audio[0])
 
-    image_logs.append(
-        {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
-    )
+    image_logs.append({"controlnet_images": controlnet_images, "images": images, "audios": audios, "controlnet_audios": controlnet_audios})
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             for log in image_logs:
-                images = log["images"]
-                validation_prompt = log["validation_prompt"]
-                validation_image = log["validation_image"]
-
-                formatted_images = []
-
-                formatted_images.append(np.asarray(validation_image))
-
-                for image in images:
-                    formatted_images.append(np.asarray(image))
-
-                formatted_images = np.stack(formatted_images)
-
-                tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
-        elif tracker.name == "wandb":
-            formatted_images = []
-
-            for log in image_logs:
-                images = log["images"]
-                validation_prompt = log["validation_prompt"]
-                validation_image = log["validation_image"]
-
-                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
-
-                for image in images:
-                    image = wandb.Image(image, caption=validation_prompt)
-                    formatted_images.append(image)
-
-            tracker.log({"validation": formatted_images})
+                images = np.array(
+                    [
+                        np.frombuffer(image.tobytes(), dtype="uint8").reshape(
+                            (len(image.getbands()), image.height, image.width)
+                        )
+                        for image in log["controlnet_images"]
+                    ]
+                )
+                tracker.writer.add_images("test_controlnet_samples", images, step)
+                images = np.array(
+                    [
+                        np.frombuffer(image.tobytes(), dtype="uint8").reshape(
+                            (len(image.getbands()), image.height, image.width)
+                        )
+                        for image in log["images"]
+                    ]
+                )
+                tracker.writer.add_images("test_samples", images, step)
+                for _, audio in enumerate(log["controlnet_audios"]):
+                    tracker.writer.add_audio(
+                        f"test_controlnet_audio_{_}",
+                        normalize(audio),
+                        step,
+                        sample_rate=sr,
+                    )
+                for _, audio in enumerate(log["audios"]):
+                    tracker.writer.add_audio(
+                        f"test_audio_{_}",
+                        normalize(audio),
+                        step,
+                        sample_rate=sr,
+                    )
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
@@ -147,7 +157,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: gpl3
 base_model: {base_model}
 tags:
 - audio-diffusion
@@ -470,9 +480,8 @@ def make_train_dataset(args, accelerator):
         )
     else:
         if args.train_data_dir is not None:
-            dataset = load_dataset(
+            dataset = load_from_disk(
                 args.train_data_dir,
-                cache_dir=args.cache_dir,
             )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
@@ -503,8 +512,6 @@ def make_train_dataset(args, accelerator):
 
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -512,9 +519,8 @@ def make_train_dataset(args, accelerator):
 
     conditioning_image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
@@ -847,6 +853,10 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                if vae is not None:
+                    # Convert images to latent space
+                    controlnet_image = vae.encode(controlnet_image).latent_dist.sample()
+                    controlnet_image = controlnet_image * vae.config.scaling_factor
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,

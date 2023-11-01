@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 # from diffusers import AudioDiffusionPipeline
 from .pipeline_audio_diffusion import AudioDiffusionPipeline
 
-VERSION = "1.5.6"
+VERSION = "1.6.0"
 
 
 class AudioDiffusion:
