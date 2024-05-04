@@ -7,6 +7,6 @@ datasets>=2.9.0
 gradio
 streamlit
 tensorboard
-accelerate
+accelerate==0.19.0
 torchvision
 transformers
