@@ -10,3 +10,4 @@ tensorboard
 accelerate
 torchvision
 transformers
+requests==2.31.0
