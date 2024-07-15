@@ -10,3 +10,4 @@ tensorboard
 accelerate==0.19.0
 torchvision
 transformers
+requests==2.31.0
