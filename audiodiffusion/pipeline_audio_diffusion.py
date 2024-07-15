@@ -35,6 +35,7 @@ from PIL import Image
 
 from .mel import Mel
 
+
 class AudioDiffusionPipeline(DiffusionPipeline):
     """
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
