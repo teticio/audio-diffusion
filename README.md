@@ -25,7 +25,7 @@ Go to https://soundcloud.com/teticio2/sets/audio-diffusion-loops for more exampl
 
 **25/12/2022**. Now it is possible to train models conditional on an encoding (of text or audio, for example). See the section on Conditional Audio Generation below.
 
-**5/12/2022**. 🤗 Exciting news! `AudioDiffusionPipeline` has been migrated to the Hugging Face `diffusers` package so that it is even easier for others to use and contribute.
+**5/12/2022**. 🤗 Exciting news! [`AudioDiffusionPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/audio_diffusion) has been migrated to the Hugging Face `diffusers` package so that it is even easier for others to use and contribute.
 
 **2/12/2022**. Added Mel to pipeline and updated the pretrained models to save Mel config (they are now no longer compatible with previous versions of this repo). It is relatively straightforward to migrate previously trained models to the new format (see https://huggingface.co/teticio/audio-diffusion-256).
 
