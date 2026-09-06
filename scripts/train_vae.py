@@ -8,14 +8,14 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 from datasets import load_dataset, load_from_disk
-from diffusers.pipelines.audio_diffusion import Mel
+from diffusers import Mel
 from ldm.util import instantiate_from_config
 from librosa.util import normalize
 from omegaconf import OmegaConf
 from PIL import Image
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.trainer import Trainer
-from pytorch_lightning.utilities.distributed import rank_zero_only
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch.utils.data import DataLoader, Dataset
 
 from audiodiffusion.utils import convert_ldm_to_hf_vae
@@ -152,11 +152,9 @@ if __name__ == "__main__":
     lightning_config = config.pop("lightning", OmegaConf.create())
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
     trainer_config.accumulate_grad_batches = args.gradient_accumulation_steps
-    trainer_opt = argparse.Namespace(**trainer_config)
-    trainer = Trainer.from_argparse_args(
-        trainer_opt,
+    trainer = Trainer(
+        **trainer_config,
         max_epochs=args.max_epochs,
-        resume_from_checkpoint=args.resume_from_checkpoint,
         callbacks=[
             ImageLogger(
                 every=args.save_images_batches,
@@ -174,4 +172,4 @@ if __name__ == "__main__":
             ),
         ],
     )
-    trainer.fit(model, data)
+    trainer.fit(model, data, ckpt_path=args.resume_from_checkpoint)

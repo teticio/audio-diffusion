@@ -19,7 +19,7 @@ def main(args):
                 args.dataset_name,
                 args.dataset_config_name,
                 cache_dir=args.cache_dir,
-                use_auth_token=True if args.use_auth_token else None,
+                token=True if args.use_auth_token else None,
                 split="train",
             )
 
@@ -32,6 +32,8 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create pickled audio encodings for dataset of audio files.")
     parser.add_argument("--dataset_name", type=str, default=None)
+    parser.add_argument("--dataset_config_name", type=str, default=None)
+    parser.add_argument("--cache_dir", type=str, default=None)
     parser.add_argument("--output_file", type=str, default="data/encodings.p")
     parser.add_argument("--use_auth_token", type=bool, default=False)
     args = parser.parse_args()

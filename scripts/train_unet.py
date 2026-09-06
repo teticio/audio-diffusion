@@ -14,11 +14,10 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset, load_from_disk
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, UNet2DConditionModel, UNet2DModel
+from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, Mel, UNet2DConditionModel, UNet2DModel
 from diffusers.optimization import get_scheduler
-from diffusers.pipelines.audio_diffusion import Mel
 from diffusers.training_utils import EMAModel
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import create_repo, get_token, upload_folder, whoami
 from librosa.util import normalize
 from torchvision.transforms import Compose, Normalize, ToTensor
 from tqdm.auto import tqdm
@@ -30,7 +29,7 @@ logger = get_logger(__name__)
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
     if token is None:
-        token = HfFolder.get_token()
+        token = get_token()
     if organization is None:
         username = whoami(token)["name"]
         return f"{username}/{model_id}"
@@ -57,7 +56,7 @@ def main(args):
                 args.dataset_name,
                 args.dataset_config_name,
                 cache_dir=args.cache_dir,
-                use_auth_token=True if args.use_auth_token else None,
+                token=True if args.use_auth_token else None,
                 split="train",
             )
     else:
@@ -183,10 +182,11 @@ def main(args):
     )
 
     ema_model = EMAModel(
-        getattr(model, "module", model),
+        getattr(model, "module", model).parameters(),
+        use_ema_warmup=True,
         inv_gamma=args.ema_inv_gamma,
         power=args.ema_power,
-        max_value=args.ema_max_decay,
+        decay=args.ema_max_decay,
     )
 
     if args.push_to_hub:
@@ -194,7 +194,12 @@ def main(args):
             repo_name = get_full_repo_name(Path(output_dir).name, token=args.hub_token)
         else:
             repo_name = args.hub_model_id
-        repo = Repository(output_dir, clone_from=repo_name)
+        repo_id = create_repo(
+            repo_id=repo_name,
+            exist_ok=True,
+            token=args.hub_token,
+            private=args.hub_private_repo,
+        ).repo_id
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
@@ -263,7 +268,7 @@ def main(args):
                 optimizer.step()
                 lr_scheduler.step()
                 if args.use_ema:
-                    ema_model.step(model)
+                    ema_model.step(model.parameters())
                 optimizer.zero_grad()
 
             progress_bar.update(1)
@@ -275,7 +280,7 @@ def main(args):
                 "step": global_step,
             }
             if args.use_ema:
-                logs["ema_decay"] = ema_model.decay
+                logs["ema_decay"] = ema_model.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -304,10 +309,12 @@ def main(args):
 
                 # save the model
                 if args.push_to_hub:
-                    repo.push_to_hub(
+                    upload_folder(
+                        repo_id=repo_id,
+                        folder_path=output_dir,
                         commit_message=f"Epoch {epoch}",
-                        blocking=False,
-                        auto_lfs_prune=True,
+                        token=args.hub_token,
+                        run_as_future=True,
                     )
 
             if (epoch + 1) % args.save_images_epochs == 0:

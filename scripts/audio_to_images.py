@@ -7,7 +7,7 @@ import re
 import numpy as np
 import pandas as pd
 from datasets import Dataset, DatasetDict, Features, Image, Value
-from diffusers.pipelines.audio_diffusion import Mel
+from diffusers import Mel
 from tqdm.auto import tqdm
 
 logging.basicConfig(level=logging.WARN)
@@ -27,7 +27,7 @@ def main(args):
         os.path.join(root, file)
         for root, _, files in os.walk(args.input_dir)
         for file in files
-        if re.search("\.(mp3|wav|m4a)$", file, re.IGNORECASE)
+        if re.search(r"\.(mp3|wav|m4a)$", file, re.IGNORECASE)
     ]
     examples = []
     try:
@@ -44,7 +44,7 @@ def main(args):
                 assert image.width == args.resolution[0] and image.height == args.resolution[1], "Wrong resolution"
                 # skip completely silent slices
                 if all(np.frombuffer(image.tobytes(), dtype=np.uint8) == 255):
-                    logger.warn("File %s slice %d is completely silent", audio_file, slice)
+                    logger.warning("File %s slice %d is completely silent", audio_file, slice)
                     continue
                 with io.BytesIO() as output:
                     image.save(output, format="PNG")
@@ -62,7 +62,7 @@ def main(args):
         print(e)
     finally:
         if len(examples) == 0:
-            logger.warn("No valid audio files were found.")
+            logger.warning("No valid audio files were found.")
             return
         ds = Dataset.from_pandas(
             pd.DataFrame(examples),
